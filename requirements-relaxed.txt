@@ -45,3 +45,8 @@ tbparse>=0.0.7
 # Image encoding for streaming Atari frames over WebSocket.
 pillow>=10
 
+# Test deps — small, kept in the main requirements so CI can install them
+# without an extra step.
+pytest>=8
+httpx>=0.27
+
