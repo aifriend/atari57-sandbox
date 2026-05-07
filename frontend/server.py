@@ -17,12 +17,17 @@ even if the RL stack has import errors. Subprocesses do the heavy lifting.
 """
 from __future__ import annotations
 
+import asyncio
+import json
+import os
 import re
+import signal
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -202,6 +207,121 @@ def list_runs() -> dict[str, Any]:
             }
         )
     return {"count": len(items), "items": items}
+
+
+# ───────── eval streaming via WebSocket ─────────
+
+# Client lifecycle:
+#   1. open WS to /api/eval/stream
+#   2. send {"action": "start", "checkpoint": "IQN_Pong_2.ckpt", "num_steps": 2000, "frame_stride": 2}
+#   3. receive a stream of {"type": "init"|"step"|"episode"|"done"|"error", ...}
+#   4. send {"action": "stop"} or close the socket — subprocess gets terminated.
+
+@app.websocket("/api/eval/stream")
+async def eval_stream(ws: WebSocket) -> None:
+    await ws.accept()
+    proc: asyncio.subprocess.Process | None = None
+    pump_task: asyncio.Task | None = None
+
+    async def pump_stdout(p: asyncio.subprocess.Process) -> None:
+        """Read line-delimited JSON from subprocess stdout, forward to WS."""
+        assert p.stdout is not None
+        while True:
+            line = await p.stdout.readline()
+            if not line:
+                break
+            try:
+                obj = json.loads(line)
+            except json.JSONDecodeError:
+                # Subprocess emitted non-JSON (likely a deprecation warning); ignore.
+                continue
+            try:
+                await ws.send_json(obj)
+            except (RuntimeError, WebSocketDisconnect):
+                return
+
+    async def stop_proc() -> None:
+        nonlocal proc, pump_task
+        if pump_task and not pump_task.done():
+            pump_task.cancel()
+            try:
+                await pump_task
+            except asyncio.CancelledError:
+                pass
+        if proc and proc.returncode is None:
+            try:
+                proc.send_signal(signal.SIGTERM)
+                await asyncio.wait_for(proc.wait(), timeout=2.0)
+            except (ProcessLookupError, asyncio.TimeoutError):
+                proc.kill()
+                await proc.wait()
+        proc = None
+        pump_task = None
+
+    try:
+        while True:
+            msg = await ws.receive_json()
+            action = msg.get("action")
+
+            if action == "start":
+                if proc is not None:
+                    await ws.send_json({"type": "error", "message": "eval already running; stop first"})
+                    continue
+
+                ckpt_filename = msg.get("checkpoint")
+                num_steps = int(msg.get("num_steps", 2000))
+                frame_stride = int(msg.get("frame_stride", 2))
+
+                if not ckpt_filename:
+                    await ws.send_json({"type": "error", "message": "missing 'checkpoint' field"})
+                    continue
+                ckpt_path = CHECKPOINTS_DIR / ckpt_filename
+                if not ckpt_path.exists() or ckpt_path.parent != CHECKPOINTS_DIR:
+                    await ws.send_json({"type": "error", "message": f"checkpoint not found: {ckpt_filename}"})
+                    continue
+                meta = _parse_checkpoint(ckpt_path)
+                if meta is None or meta.algo_module is None:
+                    await ws.send_json({"type": "error", "message": f"can't parse algo from {ckpt_filename}"})
+                    continue
+
+                # Spawn the streaming eval subprocess.
+                env = {**os.environ, "PYTHONPATH": str(REPO_ROOT)}
+                proc = await asyncio.create_subprocess_exec(
+                    sys.executable,
+                    "-m",
+                    "frontend.stream_eval",
+                    f"--checkpoint={ckpt_path}",
+                    f"--algo={meta.algo_module}",
+                    f"--game={meta.game}",
+                    f"--num-steps={num_steps}",
+                    f"--frame-stride={frame_stride}",
+                    cwd=str(REPO_ROOT),
+                    env=env,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.DEVNULL,
+                )
+                pump_task = asyncio.create_task(pump_stdout(proc))
+                await ws.send_json(
+                    {
+                        "type": "started",
+                        "checkpoint": ckpt_filename,
+                        "algo": meta.algo_module,
+                        "game": meta.game,
+                        "pid": proc.pid,
+                    }
+                )
+
+            elif action == "stop":
+                await stop_proc()
+                await ws.send_json({"type": "stopped"})
+
+            else:
+                await ws.send_json({"type": "error", "message": f"unknown action: {action!r}"})
+
+    except WebSocketDisconnect:
+        pass
+    finally:
+        await stop_proc()
 
 
 # ───────── static frontend ─────────

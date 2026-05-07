@@ -299,7 +299,55 @@
     }
   }
 
-  /* ───────── pong-ish sim in viewport (mock — Phase 2 replaces) ───────── */
+  /* ───────── live eval streaming via WebSocket ───────── */
+
+  const evalState = {
+    ws: null,
+    running: false,
+    sessionStep: 0,
+    sessionReturn: 0.0,
+    episodes: 0,
+    actionCounts: [],   // per-action counts for the current session
+    actionDim: 0,
+    actionNames: [],
+    pendingFrame: null, // most recent frame (rendered each rAF tick)
+    lastEpisodeReturn: null,
+  };
+
+  function findCheckpointFor(algoModule, gameName) {
+    return state.checkpoints.find((c) => c.algo_module === algoModule && c.game === gameName);
+  }
+
+  function updateHud() {
+    const $ = (id) => document.getElementById(id);
+    if ($("hud-frame")) $("hud-frame").textContent = evalState.sessionStep.toLocaleString();
+    if ($("step-count")) $("step-count").textContent = evalState.sessionStep.toLocaleString();
+    if ($("rs-step")) $("rs-step").textContent = (evalState.sessionStep / 1000).toFixed(2) + "k";
+    if ($("hud-score")) $("hud-score").textContent = (evalState.lastEpisodeReturn ?? evalState.sessionReturn).toFixed(0).padStart(2, "0");
+    if ($("hud-score-2")) $("hud-score-2").textContent = String(evalState.episodes).padStart(2, "0");
+  }
+
+  function setPlayButtonState(playing) {
+    const btn = document.getElementById("play-btn");
+    const icon = document.getElementById("play-icon");
+    if (!btn || !icon) return;
+    btn.classList.toggle("on", playing);
+    icon.innerHTML = playing
+      ? '<rect x="3" y="2" width="3" height="12" fill="currentColor"/><rect x="10" y="2" width="3" height="12" fill="currentColor"/>'
+      : '<path d="M3 2l11 6-11 6z" fill="currentColor"/>';
+  }
+
+  function paintPlaceholder(ctx, W, H, message) {
+    ctx.fillStyle = "#000"; ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = "#163a2e";
+    for (let y = 4; y < H; y += 6) ctx.fillRect(W / 2 - 1, y, 2, 3);
+    if (message) {
+      ctx.fillStyle = "#4ade80";
+      ctx.font = '11px "JetBrains Mono", monospace';
+      ctx.textAlign = "center";
+      ctx.fillText(message, W / 2, H / 2);
+    }
+  }
 
   function startGameSim() {
     const c = document.getElementById("game-canvas");
@@ -307,52 +355,21 @@
     const ctx = c.getContext("2d");
     ctx.imageSmoothingEnabled = false;
     const W = c.width, H = c.height;
-    const sim = {
-      ball: { x: W / 2, y: H / 2, vx: 1.4, vy: 0.9 },
-      p1: H / 2 - 10, p2: H / 2 - 10,
-      score1: 14, score2: 6, frame: 1824503,
-    };
-    function step() {
-      const b = sim.ball;
-      b.x += b.vx; b.y += b.vy;
-      if (b.y < 4 || b.y > H - 4) b.vy = -b.vy;
-      sim.p1 += Math.sign((b.y - 10) - sim.p1) * 1.1;
-      sim.p1 = Math.max(2, Math.min(H - 22, sim.p1));
-      sim.p2 += Math.sign((b.y - 10) - sim.p2) * 0.85;
-      sim.p2 = Math.max(2, Math.min(H - 22, sim.p2));
-      if (b.x < 8 && b.y > sim.p1 - 2 && b.y < sim.p1 + 22) { b.vx = Math.abs(b.vx) * 1.02; b.vy += (Math.random() - 0.5) * 0.4; }
-      if (b.x > W - 8 && b.y > sim.p2 - 2 && b.y < sim.p2 + 22) { b.vx = -Math.abs(b.vx) * 1.02; b.vy += (Math.random() - 0.5) * 0.4; }
-      if (b.x < 0) { sim.score2++; b.x = W / 2; b.y = H / 2; b.vx = 1.4; b.vy = 0.9; }
-      if (b.x > W) { sim.score1++; b.x = W / 2; b.y = H / 2; b.vx = -1.4; b.vy = -0.9; }
-      sim.frame++;
-    }
-    function draw() {
-      ctx.fillStyle = "#000"; ctx.fillRect(0, 0, W, H);
-      ctx.fillStyle = "#163a2e";
-      for (let y = 4; y < H; y += 6) ctx.fillRect(W / 2 - 1, y, 2, 3);
-      ctx.fillStyle = "#86efac";
-      ctx.fillRect(4, Math.round(sim.p1), 3, 20);
-      ctx.fillRect(W - 7, Math.round(sim.p2), 3, 20);
-      ctx.fillStyle = "#b9fbc0";
-      ctx.fillRect(Math.round(sim.ball.x) - 1, Math.round(sim.ball.y) - 1, 3, 3);
-      ctx.fillStyle = "rgba(74,222,128,0.06)";
-      for (let i = 0; i < 18; i++) {
-        ctx.fillRect((i * 17 + (sim.frame * 3) % W) % W, (i * 7 + sim.frame * 2) % H, 1, 1);
-      }
-    }
 
-    let acc = 0, last = performance.now(), playing = true;
-    function tick(t) {
-      const dt = t - last; last = t;
-      acc += dt;
-      while (acc >= 16.67) { if (playing) step(); acc -= 16.67; }
-      draw();
-      const $ = (id) => document.getElementById(id);
-      if ($("hud-score")) $("hud-score").textContent = String(sim.score1).padStart(2, "0");
-      if ($("hud-score-2")) $("hud-score-2").textContent = String(sim.score2).padStart(2, "0");
-      if ($("hud-frame")) $("hud-frame").textContent = sim.frame.toLocaleString();
-      if ($("step-count")) $("step-count").textContent = (sim.frame + 1414).toLocaleString();
-      if ($("rs-step")) $("rs-step").textContent = ((sim.frame + 1414) / 1e6).toFixed(2) + "M";
+    paintPlaceholder(ctx, W, H, "▸ press play to run a real eval");
+
+    // Render most recent streamed frame on each animation tick.
+    function tick() {
+      if (evalState.pendingFrame) {
+        const img = evalState.pendingFrame;
+        ctx.fillStyle = "#000";
+        ctx.fillRect(0, 0, W, H);
+        // Atari frames are 160x210; preserve aspect by letterboxing.
+        const scale = Math.min(W / img.width, H / img.height);
+        const dw = img.width * scale, dh = img.height * scale;
+        const dx = (W - dw) / 2, dy = (H - dh) / 2;
+        ctx.drawImage(img, dx, dy, dw, dh);
+      }
       requestAnimationFrame(tick);
     }
     requestAnimationFrame(tick);
@@ -360,16 +377,138 @@
     const btn = document.getElementById("play-btn");
     if (btn) {
       btn.addEventListener("click", () => {
-        playing = !playing;
-        btn.classList.toggle("on", playing);
-        const icon = document.getElementById("play-icon");
-        if (icon) {
-          icon.innerHTML = playing
-            ? '<rect x="3" y="2" width="3" height="12" fill="currentColor"/><rect x="10" y="2" width="3" height="12" fill="currentColor"/>'
-            : '<path d="M3 2l11 6-11 6z" fill="currentColor"/>';
+        if (evalState.running) {
+          stopEvalStream();
+        } else {
+          startEvalStream(ctx, W, H);
         }
       });
     }
+  }
+
+  function startEvalStream(ctx, W, H) {
+    const ckpt = findCheckpointFor(state.selected.algo_module, state.selected.game);
+    if (!ckpt) {
+      paintPlaceholder(ctx, W, H, `no checkpoint for ${state.selected.algo_module}/${state.selected.game}`);
+      return;
+    }
+
+    paintPlaceholder(ctx, W, H, `connecting · ${ckpt.filename}`);
+    const wsProto = location.protocol === "https:" ? "wss:" : "ws:";
+    const ws = new WebSocket(`${wsProto}//${location.host}/api/eval/stream`);
+    evalState.ws = ws;
+    evalState.running = true;
+    evalState.sessionStep = 0;
+    evalState.sessionReturn = 0.0;
+    evalState.episodes = 0;
+    evalState.lastEpisodeReturn = null;
+    evalState.actionCounts = [];
+    evalState.actionDim = 0;
+    evalState.actionNames = [];
+    setPlayButtonState(true);
+
+    ws.addEventListener("open", () => {
+      ws.send(JSON.stringify({
+        action: "start",
+        checkpoint: ckpt.filename,
+        num_steps: 5000,
+        frame_stride: 2,
+      }));
+    });
+
+    ws.addEventListener("message", (ev) => {
+      let msg;
+      try { msg = JSON.parse(ev.data); } catch { return; }
+
+      if (msg.type === "init") {
+        evalState.actionDim = msg.action_dim;
+        evalState.actionNames = msg.actions;
+        evalState.actionCounts = new Array(msg.action_dim).fill(0);
+        renderLiveActions();
+      } else if (msg.type === "step") {
+        evalState.sessionStep = msg.step;
+        evalState.sessionReturn = msg.ep_return;
+        if (msg.action != null && evalState.actionCounts[msg.action] != null) {
+          evalState.actionCounts[msg.action] += 1;
+        }
+        if (msg.frame_b64) {
+          const img = new Image();
+          img.onload = () => { evalState.pendingFrame = img; };
+          img.src = "data:image/png;base64," + msg.frame_b64;
+        }
+        if (msg.step % 30 === 0) renderLiveActions();
+        updateHud();
+      } else if (msg.type === "episode") {
+        evalState.episodes += 1;
+        evalState.lastEpisodeReturn = msg.episode_return;
+        appendLog("evt", "eval", `episode_end · return ${msg.episode_return.toFixed(1)} · steps ${msg.episode_steps}`);
+        updateHud();
+      } else if (msg.type === "done") {
+        appendLog("ok", "eval", `done · ${msg.total_steps} env steps`);
+        stopEvalStream();
+      } else if (msg.type === "error") {
+        appendLog("err", "eval", msg.message);
+        paintPlaceholder(ctx, W, H, `error: ${msg.message}`);
+        stopEvalStream();
+      } else if (msg.type === "started") {
+        appendLog("ok", "eval", `subprocess pid=${msg.pid} · ${msg.algo} · ${msg.game}`);
+      }
+    });
+
+    ws.addEventListener("close", () => {
+      evalState.ws = null;
+      evalState.running = false;
+      setPlayButtonState(false);
+    });
+
+    ws.addEventListener("error", () => {
+      paintPlaceholder(ctx, W, H, "websocket error — see console");
+    });
+  }
+
+  function stopEvalStream() {
+    const ws = evalState.ws;
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      try { ws.send(JSON.stringify({ action: "stop" })); } catch {}
+      ws.close();
+    }
+    evalState.running = false;
+    evalState.ws = null;
+    setPlayButtonState(false);
+  }
+
+  function renderLiveActions() {
+    if (!evalState.actionDim) return;
+    const root = document.getElementById("actions");
+    if (!root) return;
+    const total = evalState.actionCounts.reduce((a, b) => a + b, 0) || 1;
+    const maxP = Math.max(...evalState.actionCounts) / total || 1;
+    root.innerHTML = "";
+    for (let i = 0; i < evalState.actionDim; i++) {
+      const p = evalState.actionCounts[i] / total;
+      const w = (p / maxP) * 100;
+      const hot = i === evalState.actionCounts.indexOf(Math.max(...evalState.actionCounts));
+      root.insertAdjacentHTML(
+        "beforeend",
+        `<div class="act">
+           <span class="nm ${hot ? "hot" : ""}">${evalState.actionNames[i] || ("A" + i)}</span>
+           <div class="bar"><div class="f" style="width:${w.toFixed(1)}%"></div></div>
+           <span class="v">${(p * 100).toFixed(1)}%</span>
+         </div>`
+      );
+    }
+  }
+
+  function appendLog(level, source, message) {
+    const logEl = document.getElementById("log");
+    if (!logEl) return;
+    const ts = new Date().toTimeString().slice(0, 8);
+    logEl.insertAdjacentHTML(
+      "afterbegin",
+      `<div class="row"><span class="ts">${ts}</span><span class="lvl ${level}">${level.toUpperCase()}</span><span class="msg"><span class="dim">${source}</span> ${message}</span></div>`
+    );
+    // Cap log length so it doesn't grow unbounded.
+    while (logEl.children.length > 60) logEl.removeChild(logEl.lastChild);
   }
 
   /* ───────── header FPS / uptime ───────── */
