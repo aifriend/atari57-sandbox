@@ -23,13 +23,26 @@ Originally designed in [Claude Design](https://claude.ai/design); the prototype'
 
 ## Run it
 
+The easiest path — one command from the repo root:
+
+```bash
+./start.sh
+```
+
+That runs the launcher script: frees the configured port (`PORT=8000` by default), cleans stale training-job logs, starts uvicorn with `--reload`, polls `/api/health`, and opens the browser when the server's up. Override port / host / no-browser via env:
+
+```bash
+PORT=8123 ./start.sh
+HOST=0.0.0.0 ./start.sh
+NO_BROWSER=1 ./start.sh
+```
+
+If you'd rather run uvicorn yourself:
+
 ```bash
 # from the repo root, with .venv activated
-PYTHONPATH=. python -m frontend.server
-# → 127.0.0.1:8000
-
-# or via uvicorn for auto-reload during development
-PYTHONPATH=. uvicorn frontend.server:app --reload --host 127.0.0.1 --port 8000
+PYTHONPATH=. python -m frontend.server                    # production-ish
+PYTHONPATH=. uvicorn frontend.server:app --reload         # dev with hot reload
 ```
 
 Open <http://127.0.0.1:8000> in a browser. Layout is fixed-width 1600px (research-console aesthetic, not responsive).
