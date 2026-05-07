@@ -10,3 +10,15 @@ __pycache__/
 
 # Jupyter Notebook
 .ipynb_checkpoints
+
+# Sandbox additions (not upstream)
+.venv/
+recordings/
+# tensorboard event files live in subdirs of runs/ (e.g. runs/<exp>/events.out.tfevents.*)
+runs/**/events.out.tfevents.*
+# new training checkpoints; bundled ones are kept via !-rules below
+checkpoints/*.ckpt
+!checkpoints/IQN_Pong_2.ckpt
+!checkpoints/PER-DQN_Pong_4.ckpt
+!checkpoints/PPO-RND_MontezumaRevenge_2.ckpt
+!checkpoints/Rainbow_Pong_2.ckpt

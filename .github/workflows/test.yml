@@ -1,0 +1,49 @@
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  unit-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y --no-install-recommends libsnappy-dev ffmpeg swig
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          python-version: "3.10"
+
+      - name: Create venv and install Python dependencies
+        run: |
+          uv venv --python 3.10 .venv
+          VIRTUAL_ENV=.venv uv pip install -r requirements-relaxed.txt
+
+      - name: Install Atari ROMs
+        run: .venv/bin/AutoROM --accept-license
+
+      - name: Run unit tests
+        run: |
+          source .venv/bin/activate
+          PYTHONPATH=. ./run_unit_tests.sh
+
+      - name: Smoke test bundled checkpoint
+        run: |
+          source .venv/bin/activate
+          python -m deep_rl_zoo.iqn.eval_agent \
+            --environment_name=Pong \
+            --load_checkpoint_file=./checkpoints/IQN_Pong_2.ckpt \
+            --num_iterations=1 \
+            --num_eval_steps=200 \
+            --nouse_tensorboard
