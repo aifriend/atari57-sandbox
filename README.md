@@ -1,262 +1,247 @@
-Deep RL Zoo
-=============================
-A collection of Deep Reinforcement Learning algorithms implemented with PyTorch to solve Atari games and classic control tasks like CartPole, LunarLander, and MountainCar.
+# Atari57 Research Sandbox
 
-The overall project structure was based on DeepMind's [DQN Zoo](https://github.com/deepmind/dqn_zoo). We adapted the code to support PyTorch, in addition also implemented some SOTA algorithms like PPO, RND, R2D2, and Agent57.
+[![tests](https://github.com/aifriend/atari57-sandbox/actions/workflows/test.yml/badge.svg)](https://github.com/aifriend/atari57-sandbox/actions/workflows/test.yml)
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
+[![Python 3.10](https://img.shields.io/badge/python-3.10-blue.svg)](https://www.python.org/downloads/release/python-3100/)
 
+A ready-to-run setup of [michaelnny/deep_rl_zoo](https://github.com/michaelnny/deep_rl_zoo) for experimenting with deep RL algorithms on Atari games (PPO, DQN, Rainbow, IQN, R2D2, NGU, **Agent57**, and more).
 
-# Content
-- [Environment and Requirements](#environment-and-requirements)
-- [Implemented Algorithms](#implemented-algorithms)
-- [Code Structure](#code-structure)
-- [Author's Notes](#authors-notes)
-- [Quick Start](#quick-start)
-- [Train Agents](#train-agents)
-- [Evaluate Agents](#evaluate-agents)
-- [Monitoring with Tensorboard](#monitoring-with-tensorboard)
-- [Acknowledgments](#acknowledgments)
-- [License](#license)
-- [Citing our work](#citing-our-work)
+> **Attribution.** All code under `deep_rl_zoo/` and `unit_tests/` is the original work of **Michael Hu** (`michaelnny`), released under Apache License 2.0. This repository is a **sandbox derivative** — it adds a `uv`-based setup script, a relaxed requirements pin set that builds on modern macOS (especially Apple Silicon), this README, a CI workflow, and a small set of corrections (one bundled checkpoint with an obsolete architecture removed). The upstream README is preserved as [`UPSTREAM_README.md`](UPSTREAM_README.md). See the [LICENSE](LICENSE) file for details.
 
+> ⚠️ **About "play all 57 Atari games out of the box"**
+>
+> deep_rl_zoo is **research / educational code**. Upstream ships 5 pre-trained checkpoints; in this sandbox we kept 4 (Pong × 3, MontezumaRevenge × 1) — the bundled `PPO_Breakout_0.ckpt` was removed because its network architecture predates upstream commit `cd860e8` ("major update with breaking changes", June 2023) and no longer loads on current code (`Missing key(s) in state_dict: policy_head.0.weight, ...`).
+>
+> The upstream author explicitly notes agents were *"only tested on Atari Pong or Breakout, and we stop training once the agent has made some progress."* That shows in the bundled weights: see the eval scores in §2. There is **no community model zoo for deep_rl_zoo** that gives you trained Agent57/R2D2/NGU agents on all 57 games. To get more checkpoints you train them here yourself. See §5 for external sources of pre-trained Atari agents (different ecosystem, different setup).
 
-# Environment and Requirements
-* Python        3.10.6
-* pip           23.0.1
-* PyTorch       2.0.1
-* openAI Gym    0.25.2
-* Tensorboard   2.13.0
+---
 
+## 1. Setup (one command)
 
-# Implemented Algorithms
-## Policy-based RL Algorithms
-<!-- mdformat off(for readability) -->
-| Directory            | Reference Paper                                                                                                               | Note |
-| -------------------- | ----------------------------------------------------------------------------------------------------------------------------- | ---- |
-| `reinforce`          | [Policy Gradient Methods for RL](https://proceedings.neurips.cc/paper/1999/file/464d828b85b0bed98e80ade0a5c43b0f-Paper.pdf)   | *    |
-| `reinforce_baseline` | [Policy Gradient Methods for RL](https://proceedings.neurips.cc/paper/1999/file/464d828b85b0bed98e80ade0a5c43b0f-Paper.pdf)   | *    |
-| `actor_critic`       | [Actor-Critic Algorithms](https://proceedings.neurips.cc/paper/1999/file/6449f44a102fde848669bdd9eb6b76fa-Paper.pdf)          | *    |
-| `a2c`                | [Asynchronous Methods for Deep Reinforcement Learning](https://arxiv.org/abs/1602.01783) \| [synchronous, deterministic variant of A3C](https://openai.com/blog/baselines-acktr-a2c/)  | P    |
-| `sac`                | [Soft Actor-Critic: Off-Policy Maximum Entropy Deep Reinforcement Learning](https://arxiv.org/abs/1801.01290) \| [Soft Actor-Critic for Discrete Action Settings](https://arxiv.org/abs/1910.07207) | P *  |
-| `ppo`                | [Proximal Policy Optimization Algorithms](https://arxiv.org/abs/1707.06347)                                                   | P    |
-| `ppo_icm`            | [Curiosity-driven Exploration by Self-supervised Prediction](https://arxiv.org/abs/1705.05363)                                | P    |
-| `ppo_rnd`            | [Exploration by Random Network Distillation](https://arxiv.org/abs/1810.12894)                                                | P    |
-| `impala`             | [IMPALA: Scalable Distributed Deep-RL with Importance Weighted Actor-Learner Architectures](https://arxiv.org/abs/1802.01561) | P    |
-<!-- mdformat on -->
-
-
-## Value-based RL Algorithms
-<!-- mdformat off(for readability) -->
-| Directory            | Reference Paper                                                                                               | Note |
-| -------------------- | ------------------------------------------------------------------------------------------------------------- | ---- |
-| `dqn`                | [Human Level Control Through Deep Reinforcement Learning](https://www.nature.com/articles/nature14236)        |      |
-| `double_dqn`         | [Deep Reinforcement Learning with Double Q-learning](https://arxiv.org/abs/1509.06461)                        |      |
-| `prioritized_dqn`    | [Prioritized Experience Replay](https://arxiv.org/abs/1511.05952)                                             |      |
-| `drqn`               | [Deep Recurrent Q-Learning for Partially Observable MDPs](https://arxiv.org/abs/1507.06527)                   | *    |
-| `r2d2`               | [Recurrent Experience Replay in Distributed Reinforcement Learning](https://openreview.net/pdf?id=r1lyTjAqYX) | P    |
-| `ngu`                | [Never Give Up: Learning Directed Exploration Strategies](https://arxiv.org/abs/2002.06038)                   | P *  |
-| `agent57`            | [Agent57: Outperforming the Atari Human Benchmark](https://arxiv.org/pdf/2003.13350)                          | P *   |
-
-<!-- mdformat on -->
-
-
-## Distributional Q Learning Algorithms
-<!-- mdformat off(for readability) -->
-| Directory            | Reference Paper                                                                                               | Note |
-| -------------------- | ------------------------------------------------------------------------------------------------------------- | ---- |
-| `c51_dqn`            | [A Distributional Perspective on Reinforcement Learning](https://arxiv.org/abs/1707.06887)                    |      |
-| `rainbow`            | [Rainbow: Combining Improvements in Deep Reinforcement Learning](https://arxiv.org/abs/1710.02298)            |      |
-| `qr_dqn`             | [Distributional Reinforcement Learning with Quantile Regression](https://arxiv.org/abs/1710.10044)            |      |
-| `iqn`                | [Implicit Quantile Networks for Distributional Reinforcement Learning](https://arxiv.org/abs/1806.06923)      |      |
-
-<!-- mdformat on -->
-**Notes**:
-* `P` means support distributed training with multiple actors and a single learner running in parallel (only supports running on a single machine).
-* `*` means only tested on Atari Pong or Breakout.
-
-# Code Structure
-*   `deep_rl_zoo` directory contains all the source code for different algorithms:
-    *   each directory contains a algorithm, more specifically:
-        - `agent.py` module contains an agent class that includes `reset()`, `step()` methods,
-        for agent that supports distributed training, we have `Actor` and `Learner` classes for the specific agent.
-        - `run_classic.py` module use simple MLP network to solve classic problems like CartPole, MountainCar, and LunarLander.
-        - `run_atari.py` module use Conv2d neural network to solve Atari games.
-        - `eval_agent.py` module evaluate trained agents by loading model state from checkpoint file with a greedy actor,
-        you can run testing on both classic problems like CartPole, MountainCar, LunarLander, and Atari games.
-    *   `main_loop.py` module contains functions run single thread and distributed training loops,
-        it also contains the `run_env_loop` function where the agent interaction with the environment.
-    *   `networks` directory contains both policy networks and q networks used by the agents.
-        - `value.py` module contains neural networks for value-based RL agents like DQN, and it's variants.
-        - `policy.py` module contains neural networks for policy-based RL agents like Actor-Critic, PPO, and it's variants.
-        - `curiosity.py` module contains neural networks for curiosity driven explorations like RND modules used by PPO, NGU, and Agent57.
-    *   `trackers.py` module is used to accumulating statistics during training and testing/evaluation,
-        it also writes log to Tensorboard if desired.
-    *   `replay.py` module contains functions and classes relating to experience replay.
-    *   `value_learning.py` module contains functions to calculate losses for value-based RL agents like DQN, and it's variants.
-    *   `policy_gradient.py` module contains functions to calculate losses policy-based RL agents like Actor-Critic, PPO, and it's variants.
-    *   `gym_env.py` module contains components for standard Atari environment preprocessing.
-    *   `greedy_actors.py` module contains all the greedy actors for testing/evaluation.
-        for example `EpsilonGreedyActor` for DQN agents, `PolicyGreedyActor` for general policy gradient agents.
-*   `unit_tests` directory contains the scripts for unit and end-to-end testing.
-*   `runs` directory contains Tensorboard logs for some of the runs.
-*   `screenshots` directory contains images of Tensorboard statistics for some of the runs.
-
-
-# Author's Notes
-* This project is for education and research purpose only. Where we focus on studying the individual algorithms rather than creating a standard library. If you're looking for a ready to use library for your productive application, this is probably the wrong place.
-* Most agents only support episodic environment with discrete action space (except PPO which also supports continuous action space).
-* Some code might not be optimal, especially the parts involving Python multiprocessing, as speed of code execution is not our main focus.
-* Try our best to replicate the implementation for the original paper, but may change some hyper-parameters to support low budget setup. Also, the hyper-parameters and network architectures are not fine-tuned.
-* For Atari games, we only use Pong or Breakout to test the agents, and we stop training once the agent have made some progress.
-* We can't guarantee it's bug free. So bug report and pull request are welcome.
-
-
-# Quick Start
-
-Please check the instructions in the `QUICK_START.md` file on how to setup the project.
-
-# Train Agents
-
-## Classic Control Tasks
-* We maintain a list of environment names at `gym_env.py` module, by default it contains ```['CartPole-v1', 'LunarLander-v2', 'MountainCar-v0', 'Acrobot-v1']```.
-* For some agents (like advanced DQN agents, most of the policy gradient agents except agents using curiosity-driven exploration), it's impossible to solve MountainCar due to the nature of the problem (sparse reward).
-
-To run a agent on classic control problem, use the following command, replace the <agent_name> with the sub-directory name.
-```
-python3 -m deep_rl_zoo.<agent_name>.run_classic
-
-# example of running DQN agents
-python3 -m deep_rl_zoo.dqn.run_classic --environment_name=MountainCar-v0
-
-python3 -m deep_rl_zoo.dqn.run_classic --environment_name=LunarLander-v2
+```bash
+./setup.sh
 ```
 
-## Atari games
-* By default, we uses gym `NoFrameskip-v4` for Atari game, and we omit the need to include 'NoFrameskip' and version in the `environment_name` args, as it will be handled by `create_atari_environment` in the `gym_env.py` module.
-* We don't scale the images before store into experience replay, as that will require 2-3x more RAM, we only scale them inside the model.forward() method.
+What this does:
+- Installs `snappy` and `ffmpeg` via Homebrew if missing.
+- Creates a Python 3.10 venv in `.venv/` with `uv` — **native arm64 on Apple Silicon** (uv downloads `cpython-3.10-macos-aarch64` rather than reusing the brew x86_64 build, which would run under Rosetta and be ~2× slower).
+- Installs PyTorch 2.2+, gym 0.25.2 (with `[box2d]` extra so LunarLander works), ALE-py 0.7.5, AutoROM, python-snappy.
+- Downloads the 109 Atari 2600 ROMs via `AutoROM` (license auto-accepted).
+- Runs a smoke test that creates a Pong env and prints the obs shape.
 
-To run a agent on Atari game, use the following command, replace the <agent_name> with the sub-directory name.
-```
-python3 -m deep_rl_zoo.<agent_name>.run_atari
+Verified eval throughput on M1 (arm64): ~780–1300 steps/sec on CPU depending on algorithm. The same evals on x86_64 Python under Rosetta were 320–700 steps/sec.
 
-# example of running DQN on Atari Pong and Breakout
-python3 -m deep_rl_zoo.dqn.run_atari --environment_name=Pong
+After it finishes:
 
-python3 -m deep_rl_zoo.dqn.run_atari --environment_name=Breakout
-```
-
-## Distributed training with multiple actors and a single learner (on the same machine)
-For agents that support distributed training, we can adjust the parameter `num_actors` to specify how many actors to run.
-
-```
-python3 -m deep_rl_zoo.ppo.run_classic --num_actors=8
+```bash
+source .venv/bin/activate
 ```
 
-The following is a high level overview of the distributed training architect. Where each actor has it's own copy of the neural network. And we use the multiprocessing.Queue to transfer the transitions between the actors and the leaner. We also use a shared dictionary to store the latest copy of the neural network's parameters, so the actors can get update it's local copy of the neural network later on.
+### Manual setup (if you skip setup.sh)
 
-![parallel training architecture](/ideas/parallel_training_architecture.png)
-
-By default, if you have multiple GPUs and you set the option `actors_on_gpu` to true, the script will evenly distribute the actors on all available GPUs. When running multiple actors on GPU, watching out for possible CUDA OUT OF MEMORY error.
-
-```
-# This will evenly distribute the actors on all GPUs
-python3 -m deep_rl_zoo.ppo.run_atari --num_actors=16 --actors_on_gpu
-
-# This will run all actors on CPU even if you have multiple GPUs
-python3 -m deep_rl_zoo.ppo.run_atari --num_actors=16 --noactors_on_gpu
+```bash
+uv venv --python 3.10 .venv
+SNAPPY_PREFIX=$(brew --prefix snappy)
+CPPFLAGS="-I$SNAPPY_PREFIX/include" LDFLAGS="-L$SNAPPY_PREFIX/lib" \
+  VIRTUAL_ENV=.venv uv pip install -r requirements-relaxed.txt
+.venv/bin/AutoROM --accept-license
 ```
 
+> **Why a relaxed requirements file?** The upstream `requirements.txt` pins old versions (torch 2.0.1, mujoco 2.2.2) that fail to install on modern macOS / Python 3.11+. `requirements-relaxed.txt` keeps `gym==0.25.2` and `ale-py==0.7.5` (mandatory — the codebase uses the old gym API and the new ale-py 0.10+ doesn't register old-style env names with old gym), loosens torch / opencv / numpy, drops mujoco (not needed for Atari or any classic-control example here), and adds the `[box2d]` extra so LunarLander and the upstream `gym_env_test` work.
 
-# Evaluate Agents
-Before you run the eval_agent module, make sure you have a valid checkpoint file for the specific agent and environment.
-By default, it will record a video of agent self-play at the `recordings` directory.
+---
 
-To run a agent on Atari game, use the following command, replace the <agent_name> with the sub-directory name.
+## 2. Try a bundled checkpoint
+
+Four pre-trained checkpoints are kept (see §1 for why we removed the fifth). Quickest test:
+
+```bash
+# IQN agent on Pong, 2000 eval steps, no tensorboard
+python -m deep_rl_zoo.iqn.eval_agent \
+    --environment_name=Pong \
+    --load_checkpoint_file=./checkpoints/IQN_Pong_2.ckpt \
+    --num_iterations=1 \
+    --num_eval_steps=2000 \
+    --nouse_tensorboard
 ```
-python3 -m deep_rl_zoo.<agent_name>.eval_agent
 
-# Example of load pre-trained PPO model on Breakout
-python3 -m deep_rl_zoo.ppo.eval_agent --environment_name=Breakout --load_checkpoint_file=./checkpoints/PPO_Breakout_0.ckpt
+This will:
+- Run the agent in greedy (deterministic) mode.
+- Print `episode_return` per iteration.
+- Record an MP4 of self-play under `recordings/`.
+
+Available bundled checkpoints (and what to expect over 10k steps on M1 arm64):
+
+| File | Algorithm | Game | eval module | Observed `episode_return` (10k steps) |
+|---|---|---|---|---|
+| `IQN_Pong_2.ckpt` | IQN | Pong | `deep_rl_zoo.iqn.eval_agent` | **−2.50** (loses; undertrained) |
+| `PER-DQN_Pong_4.ckpt` | Prioritized DQN | Pong | `deep_rl_zoo.prioritized_dqn.eval_agent` | **+14.0** (wins) |
+| `Rainbow_Pong_2.ckpt` | Rainbow | Pong | `deep_rl_zoo.rainbow.eval_agent` | **+10.3** (wins) |
+| `PPO-RND_MontezumaRevenge_2.ckpt` | PPO + RND | MontezumaRevenge | `deep_rl_zoo.ppo_rnd.eval_agent` | 0.0 (sparse-reward game; doesn't reach a key in 10k steps) |
+
+Pong is scored from −21 to +21. The **PER-DQN and Rainbow checkpoints win comfortably**; IQN is a partial-training snapshot that loses. The PPO-RND/Montezuma checkpoint is also early-training — Montezuma needs millions of steps to see meaningful exploration.
+
+---
+
+## 3. Train your own
+
+### On Atari
+
+> The upstream defaults are aggressive: `dqn.run_atari` is `num_iterations=100 × num_train_steps=500_000` = **50M frames** per run. On a CPU-only Mac that's days. Always pass smaller numbers for a quick smoke run, then scale up once you know the pipeline works.
+
+```bash
+# Quick sanity run (~2 min on M1 CPU): 1 iteration, 5k train steps, 1k eval steps
+python -m deep_rl_zoo.dqn.run_atari --environment_name=Pong \
+    --num_iterations=1 --num_train_steps=5000 --num_eval_steps=1000 \
+    --replay_capacity=10000 --min_replay_size=2000
+
+# Distributed PPO with 8 actors on Breakout (long run; default ≈50M frames)
+python -m deep_rl_zoo.ppo.run_atari --environment_name=Breakout --num_actors=8
+
+# Agent57 on a hard exploration game (very long; tune iterations down for a smoke test)
+python -m deep_rl_zoo.agent57.run_atari --environment_name=MontezumaRevenge --num_actors=8
 ```
 
+Each run writes:
+- TensorBoard logs to `runs/`
+- Checkpoints to `checkpoints/` every N iterations
 
-# Monitoring with Tensorboard
-By default, both training, evaluation will log to Tensorboard at the `runs` directory.
-To disable this, use the option `--nouse_tensorboard`.
-
-```
+Watch progress:
+```bash
 tensorboard --logdir=./runs
 ```
 
-The classes for write logs to Tensorboard is implemented in `trackers.py` module.
+### On classic control (CartPole, LunarLander) — minutes, useful for sanity checks
 
-* to improve performance, we only write logs at end of episode
-* we separate training and evaluation logs
-* if algorithm support parallel training, we separate actor, learner logs
-* for agents that support parallel training, only log maximum of 8 actors, this is controlled by `run_parallel_training_iterations` in `main_loop.py` module
-
-## Measurements available on Tensorboard
-`performance(env_steps)`:
-* the statistics are measured over env steps (or frames for Atari), if use frame_skip, it's counted after frame skip
-* `episode_return` the non-discounted sum of raw rewards of current episode
-* `episode_steps` the current episode length or steps
-* `num_episodes` how many episodes have been conducted
-* `step_rate(second)` step per seconds, per actors
-
-`agent_statistics(env_steps)`:
-* the statistics are measured over env steps (or frames for Atari), if use frame_skip, it's counted after frame skip
-* it'll log whatever is exposed in the agent's `statistics` property such as training loss, learning rate, discount, updates etc.
-* for algorithm support distributed training (multiple actors), this is only the statistics for the actors.
-
-`learner_statistics(learner_steps)`:
-* only available if the agent supports distributed training (multiple actors one learner)
-* it'll log whatever is exposed in the learner's `statistics` property such as training loss, learning rate, discount, updates etc.
-* to improve performance, it only logs every 100 learner steps
-
-![DQN on Pong](/screenshots/Variety_DQN_on_Pong.png)
-
-## Add tags to Tensorboard
-This could be handy if we want to compare different hyper parameter's performances or different runs with various seeds
-```
-python3 -m deep_rl_zoo.impala.run_classic --use_lstm --learning_rate=0.00045 --tag=LSTM-LR0.00045
+```bash
+python -m deep_rl_zoo.dqn.run_classic --environment_name=CartPole-v1
+python -m deep_rl_zoo.ppo.run_classic --environment_name=LunarLander-v2 --num_actors=4
 ```
 
-## Debug with environment screenshots
-This could be handy if we want to see what's happening during the training, we can set the `debug_screenshots_interval` (measured over number of episode) to some value, and it'll add screenshots of the terminal state to Tensorboard.
+### Algorithms available
+
+Policy-based: `reinforce`, `reinforce_baseline`, `actor_critic`, `a2c`, `sac`, `ppo`, `ppo_icm`, `ppo_rnd`, `impala`
+Value-based: `dqn`, `double_dqn`, `prioritized_dqn`, `drqn`, `r2d2`, `ngu`, `agent57`
+Distributional: `c51_dqn`, `rainbow`, `qr_dqn`, `iqn`
+
+Each algorithm has the same three entry points: `run_classic`, `run_atari`, `eval_agent`.
+
+---
+
+## 4. Run the upstream test suite
+
+> **Both upstream scripts call `python3` directly — they assume `.venv` is activated.** Without activation, system `python3` runs and you'll get `ModuleNotFoundError: No module named 'absl'`. Activate first: `source .venv/bin/activate`.
+
+There are two upstream test runners and they do different things:
+
+```bash
+# Unit tests: 130 tests, ~5 seconds total. Pure-function tests for losses, replay,
+# env wrappers, checkpoint serialization, etc. Verified passing on this venv.
+./run_unit_tests.sh
+
+# End-to-end tests: ~60 tests, 30-90 seconds each. Actually launches every algorithm's
+# run_classic / run_atari / eval_agent for a few hundred steps. Catches whole classes
+# of regressions when you start modifying upstream code. Total runtime ~1 hour.
+./run_e2e_tests.sh
+```
+
+Verified working subsets:
+
+```bash
+python -m unit_tests.value_learning_test          # 38 tests, instant
+python -m unit_tests.gym_env_test                 # 16 tests (needs gym[box2d])
+python -m unit_tests.checkpoint_test              # 8 tests
+python -m unit_tests.agent57.run_atari_test       # ~70s — confirms Agent57 actually trains
+python -m unit_tests.ppo.run_atari_test           # ~40s — confirms distributed multi-actor training works on this Mac
+```
+
+The `checkpoint_test` module reads absl FLAGS during `setUp`, so generic `unittest discover` doesn't work for it — use `python -m unit_tests.checkpoint_test`. The e2e tests write checkpoints under `checkpoints/` and tensorboard logs under `runs/`; both new-file patterns are covered by `.gitignore` so the bundled checkpoints / upstream sample logs stay tracked.
+
+---
+
+## 5. Where to make changes (quick map)
+
+| You want to... | Edit |
+|---|---|
+| Tweak network architectures | `deep_rl_zoo/networks/{policy,value,curiosity}.py` |
+| Add an Atari preprocessing wrapper | `deep_rl_zoo/gym_env.py` |
+| Change a loss function | `deep_rl_zoo/{policy_gradient,value_learning,nonlinear_bellman}.py` |
+| Modify the experience replay (PER, R2D2 sequence buffer, NGU episodic memory) | `deep_rl_zoo/replay.py` |
+| Change distributed actor/learner orchestration | `deep_rl_zoo/main_loop.py`, `deep_rl_zoo/distributed.py` |
+| Add a new algorithm | Copy any existing folder (e.g. `deep_rl_zoo/dqn/`) — it has `agent.py`, `run_classic.py`, `run_atari.py`, `eval_agent.py` |
+| Tune hyperparameters | Top of each `run_atari.py` (absl-py FLAGS) |
+
+The hyperparameters in the upstream code are **not fine-tuned** (author's own caveat). Any HP sweep is a useful experiment.
+
+---
+
+## 6. External pre-trained Atari agents (different ecosystem)
+
+If you want trained agents on more games right now, the largest public source is the **Stable-Baselines3 Zoo** on HuggingFace: <https://huggingface.co/sb3>. Coverage: DQN, PPO, QR-DQN, A2C × ~25 popular Atari games.
+
+These are **not** integrable with this venv — SB3 needs `gymnasium` + a recent `ale-py`, while deep_rl_zoo is locked to `gym 0.25.2` + `ale-py 0.7.5`. The two stacks are mutually incompatible because ale-py 0.7.5 only auto-registers env names with old gym, and ale-py 0.10+ only auto-registers with gymnasium.
+
+If you want to use them, set up a **separate** venv in a sibling directory (NOT inside this `Atari57/` folder):
+
+```bash
+mkdir -p ../Atari57_sb3 && cd ../Atari57_sb3
+uv venv --python 3.11 .venv
+VIRTUAL_ENV=.venv uv pip install "stable-baselines3[extra]" sb3-contrib huggingface-sb3 "ale-py>=0.10" "gymnasium[atari]"
+```
+
+Then load any agent via `huggingface_sb3.load_from_hub(repo_id="sb3/dqn-PongNoFrameskip-v4", filename="dqn-PongNoFrameskip-v4.zip")` and `stable_baselines3.DQN.load(...)`. Note that **this sibling-venv recipe is unverified** — it's the standard SB3 quick-start, but I haven't actually built it on this machine. It exists here as a starting point, not a guarantee.
+
+---
+
+## 7. Project layout
 
 ```
-# Example of creating terminal state screenshot every 100 episodes
-python3 -m deep_rl_zoo.ppo_rnd.run_atari --environment_name=MontezumaRevenge --debug_screenshots_interval=100
+Atari57/
+├── README_SANDBOX.md          # This file (sandbox usage notes)
+├── README.md                  # Upstream README (algorithm catalog + paper refs)
+├── QUICK_START.md             # Upstream install notes
+├── setup.sh                   # Sandbox setup script
+├── requirements-relaxed.txt   # Modern pin set used by setup.sh
+├── requirements.txt           # Original upstream pins (kept for reference)
+├── run_unit_tests.sh          # Upstream test runner
+├── run_e2e_tests.sh           # Upstream end-to-end test runner
+├── deep_rl_zoo/               # Upstream source — ~30 algorithms
+├── checkpoints/               # 4 bundled .ckpt files + your training output
+├── runs/                      # TensorBoard logs (upstream samples + your runs)
+├── recordings/                # Self-play MP4s from eval_agent
+├── unit_tests/                # Upstream unit tests (129 tests)
+├── ideas/                     # Upstream architecture diagrams
+└── screenshots/               # Upstream tensorboard screenshots
 ```
-![PPO-RND on MontezumaRevenge](/screenshots/PPO_RND_on_MontezumaRevenge_screenshots.png)
 
+---
 
-# Acknowledgments
+## 8. Common gotchas
 
-This project is based on the work of DeepMind, specifically the following projects:
-* [DeepMind DQN Zoo](http://github.com/deepmind/dqn_zoo)
-* [DeepMind RLax](https://github.com/deepmind/rlax)
+- **`No module named 'snappy'`** — `python-snappy` needs `brew install snappy` first; `setup.sh` handles this.
+- **`Could not initialize NNPACK` (CPU warning)** — harmless on M1.
+- **Deprecation warnings about old gym step API and `np.bool8`** — expected. `gym==0.25.2` is pinned because deep_rl_zoo predates the `gym → gymnasium` migration. Don't bump it.
+- **`render_mode` warnings during eval** — gym 0.25.2 quirk; the MP4 still renders correctly.
+- **Slow training on CPU** — Atari training is GPU-friendly. The upstream code only switches between CUDA and CPU (every `run_*.py` has the same line). On Mac it falls back to CPU even when MPS is available. Patch is one line per `run_*.py` (or use `sed` once):
 
-In addition, other reference projects from the community have been very helpful to us, including:
-* [Stable Baselines3](https://github.com/DLR-RM/stable-baselines3)
-* [OpenAI Spinning Up](https://github.com/openai/spinningup)
-* [SEED RL](https://github.com/google-research/seed_rl)
-* [TorchBeast](https://github.com/facebookresearch/torchbeast)
+  ```bash
+  # Replace the device-selection line everywhere it appears:
+  sed -i '' "s|torch.device('cuda' if torch.cuda.is_available() else 'cpu')|torch.device('mps' if torch.backends.mps.is_available() else ('cuda' if torch.cuda.is_available() else 'cpu'))|g" deep_rl_zoo/*/run_classic.py deep_rl_zoo/*/run_atari.py
+  ```
 
+  Note: not every op in the codebase has an MPS kernel in older torch builds — if you hit `NotImplementedError: ... aten::xxx` falling back to CPU on M1, set `PYTORCH_ENABLE_MPS_FALLBACK=1` to route unsupported ops to CPU automatically.
+- **Architecture mismatches when loading older checkpoints** — upstream commit `cd860e8` (June 2023) refactored conv-net heads from `Linear` to `Sequential(Linear, ReLU, Linear)`. Any pre-2023 .ckpt for the affected algorithms (PPO, A2C, etc.) will fail with `Missing key(s) in state_dict: policy_head.0.weight, ...`. There's no clean back-compat path; just retrain.
 
-# License
-This project is licensed under the Apache License, Version 2.0 (the "License")
-see the LICENSE file for details
+---
 
+## 9. Bibliography
 
-# Citing our work
-If you reference or use our project in your research, please cite:
+Canonical reads for the headline algorithms in this repo:
 
-```
-@software{deep_rl_zoo2022github,
-  title = {{Deep RL Zoo}: A collections of Deep RL algorithms implemented with PyTorch},
-  author = {Michael Hu},
-  url = {https://github.com/michaelnny/deep_rl_zoo},
-  version = {1.0.0},
-  year = {2022},
-}
-```
+- **Agent57** (Badia et al., DeepMind, 2020) — first agent above human on all 57 Atari games. <https://arxiv.org/abs/2003.13350>
+- **R2D2** (Kapturowski et al., DeepMind, 2019) — distributed recurrent replay foundation. <https://openreview.net/pdf?id=r1lyTjAqYX>
+- **NGU** (Badia et al., 2020) — exploration curriculum that Agent57 builds on. <https://arxiv.org/abs/2002.06038>
+- **IQN** (Dabney et al., 2018) — implicit quantile distributional RL. <https://arxiv.org/abs/1806.06923>
+- **Rainbow** (Hessel et al., 2017) — combined DQN improvements. <https://arxiv.org/abs/1710.02298>
+
+These map to `deep_rl_zoo/{agent57,r2d2,ngu,iqn,rainbow}/`.

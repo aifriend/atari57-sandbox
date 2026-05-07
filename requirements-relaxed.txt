@@ -1,0 +1,37 @@
+# Relaxed pin set for modern Mac (M1/Intel) and Python 3.10/3.11.
+# Original requirements.txt is preserved as upstream reference. See README_SANDBOX.md.
+
+# Core: do NOT bump gym — deep_rl_zoo is built against the old 0.25.2 API.
+# Bumping it (or installing gymnasium alongside) breaks env registration because
+# ale-py 0.7.5 only auto-registers with old gym.
+# [box2d] extra adds box2d-py + swig so LunarLander-v2 / BipedalWalker work for the
+# classic-control sanity examples and the upstream gym_env_test unit tests.
+gym[box2d]==0.25.2
+ale-py==0.7.5
+AutoROM==0.6.1
+AutoROM.accept-rom-license==0.6.1
+
+# CLI / logging
+absl-py>=1.4.0
+
+# Image + display
+imageio>=2.31.0
+pyglet>=2.0
+pygame>=2.1.0
+opencv-python>=4.8
+
+# Deep learning. PyTorch 2.0.1 is too old to install cleanly on modern Mac/Python;
+# 2.2+ is checkpoint-compatible with the bundled .ckpt files.
+torch>=2.2,<3
+torchvision>=0.17,<1
+torchsummary>=1.5.1
+
+# Tensorboard
+tensorboard>=2.13
+
+# Numerics — keep <2 because gym 0.25.2 / ale-py 0.7.5 predate NumPy 2.
+numpy>=1.24,<2
+
+# Required by deep_rl_zoo.replay (transition compression).
+# Wheel build needs the snappy C library (brew install snappy on Mac).
+python-snappy>=0.6.1
