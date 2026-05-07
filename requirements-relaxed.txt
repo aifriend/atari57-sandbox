@@ -35,3 +35,13 @@ numpy>=1.24,<2
 # Required by deep_rl_zoo.replay (transition compression).
 # Wheel build needs the snappy C library (brew install snappy on Mac).
 python-snappy>=0.6.1
+
+# Frontend backend (FastAPI sidecar serving the research-console UI).
+fastapi>=0.110
+uvicorn[standard]>=0.27
+websockets>=12
+tbparse>=0.0.7
+
+# Image encoding for streaming Atari frames over WebSocket.
+pillow>=10
+
