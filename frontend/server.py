@@ -209,6 +209,203 @@ def list_runs() -> dict[str, Any]:
     return {"count": len(items), "items": items}
 
 
+@app.get("/api/runs/{run_name}/scalars")
+def run_scalars(run_name: str, tag: str | None = None, max_points: int = 500) -> dict[str, Any]:
+    """Return tensorboard scalar series for a run.
+
+    Query params:
+      tag         — optional, filter to a specific tag (e.g. performance(env_steps)/episode_return)
+      max_points  — downsample dense series to this many points (default 500)
+
+    Response: {"run": str, "tags": {tag: [{"step": int, "value": float}, ...], ...}}
+    """
+    import tbparse
+
+    # Hardening: reject path traversal — run_name must be a single dir name.
+    if "/" in run_name or ".." in run_name:
+        return {"run": run_name, "tags": {}, "error": "invalid run_name"}
+    run_dir = RUNS_DIR / run_name
+    if not run_dir.is_dir():
+        return {"run": run_name, "tags": {}, "error": "run not found"}
+
+    reader = tbparse.SummaryReader(str(run_dir))
+    df = reader.scalars
+    if df is None or len(df) == 0:
+        return {"run": run_name, "tags": {}}
+
+    if tag is not None:
+        df = df[df.tag == tag]
+
+    out: dict[str, list[dict[str, float]]] = {}
+    for tag_name, sub in df.groupby("tag"):
+        # Drop NaNs, sort by step.
+        sub = sub.dropna(subset=["value"]).sort_values("step")
+        if len(sub) == 0:
+            continue
+        # Downsample if needed.
+        if len(sub) > max_points:
+            stride = max(1, len(sub) // max_points)
+            sub = sub.iloc[::stride]
+        out[str(tag_name)] = [
+            {"step": int(row.step), "value": float(row.value)}
+            for row in sub.itertuples(index=False)
+        ]
+    return {"run": run_name, "tags": out}
+
+
+# ───────── training subprocess control ─────────
+
+# In-memory job table. Surviving across restarts isn't a goal — for a single-machine
+# research console, this is plenty. Each job is a subprocess of `python -m
+# deep_rl_zoo.<algo>.run_atari` with optional hyperparameter overrides.
+
+@dataclass
+class TrainingJob:
+    job_id: str
+    algo: str
+    game: str
+    pid: int
+    started_at: float
+    proc: asyncio.subprocess.Process | None = None
+    args: list[str] = None  # type: ignore[assignment]
+    log_path: Path | None = None
+
+    def status(self) -> str:
+        if self.proc is None:
+            return "unknown"
+        if self.proc.returncode is None:
+            return "running"
+        return "exited" if self.proc.returncode == 0 else "failed"
+
+
+JOBS: dict[str, TrainingJob] = {}
+
+
+@app.post("/api/training/start")
+async def training_start(body: dict[str, Any]) -> dict[str, Any]:
+    """Spawn `python -m deep_rl_zoo.<algo>.run_atari` with optional overrides.
+
+    Body: {
+      "algo": "dqn",
+      "game": "Pong",
+      "num_iterations": 1,
+      "num_train_steps": 5000,
+      "num_eval_steps": 1000,
+      "extra_args": ["--learning_rate=0.0005"]   // optional, passed straight through
+    }
+    """
+    import time
+    import uuid
+
+    algo = body.get("algo")
+    game = body.get("game")
+    if not algo or not game:
+        return {"error": "algo and game are required"}
+
+    # Validate algo against catalog.
+    if not any(a[0] == algo for a in ALGORITHMS):
+        return {"error": f"unknown algo: {algo}"}
+
+    job_id = uuid.uuid4().hex[:8]
+    log_path = REPO_ROOT / "runs" / f"_training_{job_id}.log"
+    log_path.parent.mkdir(exist_ok=True)
+
+    # Note: deep_rl_zoo's run_atari uses absl-py FLAGS, so booleans are toggled
+    # via --use_tensorboard / --nouse_tensorboard (no =value). Tensorboard
+    # defaults to True, so we leave it on by omitting the flag — the chart
+    # endpoint reads its event files.
+    args = [
+        sys.executable, "-m", f"deep_rl_zoo.{algo}.run_atari",
+        f"--environment_name={game}",
+        f"--num_iterations={int(body.get('num_iterations', 1))}",
+        f"--num_train_steps={int(body.get('num_train_steps', 5000))}",
+        f"--num_eval_steps={int(body.get('num_eval_steps', 1000))}",
+    ]
+    for arg in body.get("extra_args") or []:
+        if isinstance(arg, str) and arg.startswith("--"):
+            args.append(arg)
+
+    log_fh = log_path.open("wb")
+    proc = await asyncio.create_subprocess_exec(
+        *args,
+        cwd=str(REPO_ROOT),
+        env={**os.environ, "PYTHONPATH": str(REPO_ROOT)},
+        stdout=log_fh,
+        stderr=asyncio.subprocess.STDOUT,
+    )
+    job = TrainingJob(
+        job_id=job_id,
+        algo=algo,
+        game=game,
+        pid=proc.pid,
+        started_at=time.time(),
+        proc=proc,
+        args=args[2:],  # skip "python -m"
+        log_path=log_path,
+    )
+    JOBS[job_id] = job
+    return {
+        "job_id": job_id,
+        "pid": proc.pid,
+        "algo": algo,
+        "game": game,
+        "log_path": str(log_path.relative_to(REPO_ROOT)),
+        "started_at": job.started_at,
+    }
+
+
+@app.get("/api/training/jobs")
+def training_jobs() -> dict[str, Any]:
+    items = []
+    for job in JOBS.values():
+        items.append(
+            {
+                "job_id": job.job_id,
+                "algo": job.algo,
+                "game": job.game,
+                "pid": job.pid,
+                "started_at": job.started_at,
+                "status": job.status(),
+                "returncode": job.proc.returncode if job.proc else None,
+                "log_path": str(job.log_path.relative_to(REPO_ROOT)) if job.log_path else None,
+            }
+        )
+    items.sort(key=lambda j: j["started_at"], reverse=True)
+    return {"count": len(items), "items": items}
+
+
+@app.post("/api/training/jobs/{job_id}/stop")
+async def training_stop(job_id: str) -> dict[str, Any]:
+    job = JOBS.get(job_id)
+    if job is None:
+        return {"error": "job not found"}
+    if job.proc is None or job.proc.returncode is not None:
+        return {"job_id": job_id, "status": job.status()}
+    try:
+        job.proc.send_signal(signal.SIGTERM)
+        await asyncio.wait_for(job.proc.wait(), timeout=3.0)
+    except (ProcessLookupError, asyncio.TimeoutError):
+        try:
+            job.proc.kill()
+            await job.proc.wait()
+        except ProcessLookupError:
+            pass
+    return {"job_id": job_id, "status": job.status(), "returncode": job.proc.returncode}
+
+
+@app.get("/api/training/jobs/{job_id}/log")
+def training_log(job_id: str, tail: int = 100) -> dict[str, Any]:
+    """Return the last N lines of the job's log file (defaults to 100)."""
+    job = JOBS.get(job_id)
+    if job is None or job.log_path is None or not job.log_path.exists():
+        return {"job_id": job_id, "lines": []}
+    text = job.log_path.read_text(errors="replace")
+    lines = text.splitlines()
+    if tail > 0:
+        lines = lines[-tail:]
+    return {"job_id": job_id, "lines": lines}
+
+
 # ───────── eval streaming via WebSocket ─────────
 
 # Client lifecycle:

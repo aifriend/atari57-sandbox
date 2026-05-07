@@ -167,6 +167,10 @@
     const label = document.getElementById("game-label");
     if (label) label.textContent = name;
     updateExperimentLabel();
+    // Re-render the chart to show real curves for this game's runs.
+    if (typeof renderChartFromRuns === "function") {
+      renderChartFromRuns();
+    }
   }
 
   /* ───────── top-bar labels ───────── */
@@ -218,53 +222,126 @@
     }
   }
 
-  /* ───────── episode-return chart (mock — Phase 3 replaces) ───────── */
+  /* ───────── episode-return chart (real scalars from /api/runs/.../scalars) ───────── */
 
-  function renderChart() {
+  // Curves to plot are picked by run-name patterns. The chart picks runs whose
+  // name contains the current game and tries to plot one curve per algo.
+  const CURVE_COLORS = [
+    "#86efac", // bright green — rainbow
+    "#f5b942", // amber — per-dqn
+    "#67e8f9", // cyan — iqn
+    "#e879f9", // magenta — ppo
+    "#60a5fa", // blue — extras
+  ];
+
+  async function renderChartFromRuns() {
     const svg = document.getElementById("chart-svg");
     if (!svg) return;
     const W = 1000, H = 400;
 
-    function curve(n, start, end, noise, seed) {
-      const pts = [];
-      let s = seed;
-      const rnd = () => { s = (s * 9301 + 49297) % 233280; return s / 233280; };
-      for (let i = 0; i < n; i++) {
-        const t = i / (n - 1);
-        const ease = 1 - Math.pow(1 - t, 1.8);
-        const v = start + (end - start) * ease + (rnd() - 0.5) * noise;
-        pts.push([(i / (n - 1)) * W, v]);
-      }
-      return pts;
+    // Find runs that mention the current game and end in -train (skip eval / actor sub-logs).
+    let runsList = [];
+    try {
+      const runs = await fetchJSON("/api/runs");
+      runsList = runs.items;
+    } catch {
+      return paintChartPlaceholder(svg, "no /api/runs available");
     }
-    const yMap = (v) => H - ((v + 21) / 42) * H;
-    const pathFrom = (pts) => pts.map((p, i) => (i ? "L" : "M") + p[0].toFixed(1) + "," + yMap(p[1]).toFixed(1)).join(" ");
-    const areaFrom = (pts) =>
-      "M" + pts[0][0].toFixed(1) + "," + H + " " +
-      pts.map((p) => "L" + p[0].toFixed(1) + "," + yMap(p[1]).toFixed(1)).join(" ") +
-      " L" + pts[pts.length - 1][0].toFixed(1) + "," + H + " Z";
+    const game = state.selected.game;
+    const candidates = runsList.filter((r) => {
+      const n = r.name;
+      // matches PongNoFrameskip-v4-{ALGO}-train, PongNoFrameskip-v4-{ALGO}-learner-train, etc.
+      const isTrain = n.endsWith("-train");
+      const isLearner = n.includes("-learner-");
+      const matchesGame = n.toLowerCase().includes(game.toLowerCase());
+      // prefer learner/main train logs over individual actor logs
+      const isActor = /-actor\d+-/.test(n);
+      return isTrain && matchesGame && !isActor;
+    });
 
-    const rainbow = curve(180, -19, 12, 4.5, 7);
-    const perDqn = curve(180, -20, 16, 4.0, 31);
-    const iqn = curve(180, -20, -1, 5.5, 91);
+    if (candidates.length === 0) {
+      return paintChartPlaceholder(svg, `no -train runs for ${game}`);
+    }
+
+    const tag = "performance(env_steps)/episode_return";
+    const series = [];
+    for (const run of candidates.slice(0, 5)) {
+      try {
+        const data = await fetchJSON(`/api/runs/${encodeURIComponent(run.name)}/scalars?tag=${encodeURIComponent(tag)}&max_points=200`);
+        const points = data.tags[tag];
+        if (points && points.length > 1) {
+          // Extract algo name from run name like PongNoFrameskip-v4-Rainbow-train
+          const m = run.name.match(/v4-([^-]+(?:-[^-]+)?)-(?:learner-)?train$/);
+          const algoName = m ? m[1] : run.name;
+          series.push({ name: algoName, points });
+        }
+      } catch {
+        /* skip */
+      }
+    }
+
+    if (series.length === 0) {
+      return paintChartPlaceholder(svg, `no scalar data in ${candidates.length} runs`);
+    }
+
+    drawSeries(svg, W, H, series);
+  }
+
+  function paintChartPlaceholder(svg, msg) {
+    svg.innerHTML = `<text x="500" y="200" fill="#2e7e5e" text-anchor="middle" font-family="JetBrains Mono" font-size="11">${msg}</text>`;
+  }
+
+  function drawSeries(svg, W, H, series) {
+    // Compute bounds across all series.
+    let xMax = 0, yMin = 1e9, yMax = -1e9;
+    for (const s of series) {
+      for (const p of s.points) {
+        if (p.step > xMax) xMax = p.step;
+        if (p.value < yMin) yMin = p.value;
+        if (p.value > yMax) yMax = p.value;
+      }
+    }
+    if (yMin === yMax) { yMin -= 1; yMax += 1; }
+    // Pad y range a bit.
+    const yPad = (yMax - yMin) * 0.08;
+    yMin -= yPad; yMax += yPad;
+
+    const xMap = (x) => (x / xMax) * W;
+    const yMap = (v) => H - ((v - yMin) / (yMax - yMin)) * H;
+
+    const pathFrom = (pts) => pts.map((p, i) => (i ? "L" : "M") + xMap(p.step).toFixed(1) + "," + yMap(p.value).toFixed(1)).join(" ");
+
+    const legend = series.map((s, i) => {
+      const c = CURVE_COLORS[i % CURVE_COLORS.length];
+      return `<g transform="translate(${10 + i * 130}, 16)"><line x1="0" y1="0" x2="14" y2="0" stroke="${c}" stroke-width="2"/><text x="20" y="3" fill="${c}" font-family="JetBrains Mono" font-size="10">${s.name}</text></g>`;
+    }).join("");
+
+    const paths = series.map((s, i) => {
+      const c = CURVE_COLORS[i % CURVE_COLORS.length];
+      const isPrimary = i === 0;
+      const filter = isPrimary ? ' filter="url(#glow)"' : "";
+      return `<path d="${pathFrom(s.points)}" fill="none" stroke="${c}" stroke-width="${isPrimary ? 1.8 : 1.2}" opacity="${isPrimary ? 1 : 0.7}"${filter}/>`;
+    }).join("");
+
+    const yZero = yMin <= 0 && 0 <= yMax ? `<line x1="0" y1="${yMap(0)}" x2="${W}" y2="${yMap(0)}" stroke="#1e5743" stroke-dasharray="2,4"/>` : "";
+    const xLabels = `
+      <text x="0" y="${H - 4}" fill="#2e7e5e" font-family="JetBrains Mono" font-size="9">0</text>
+      <text x="${W - 60}" y="${H - 4}" fill="#2e7e5e" font-family="JetBrains Mono" font-size="9">${(xMax / 1e6).toFixed(1)}M steps</text>
+    `;
+    const yLabels = `
+      <text x="${W - 30}" y="14" fill="#86efac" font-family="JetBrains Mono" font-size="10">${yMax.toFixed(0)}</text>
+      <text x="${W - 30}" y="${H - 6}" fill="#2e7e5e" font-family="JetBrains Mono" font-size="10">${yMin.toFixed(0)}</text>
+    `;
 
     svg.innerHTML = `
       <defs>
-        <linearGradient id="rgrad" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stop-color="#86efac" stop-opacity="0.35"/>
-          <stop offset="100%" stop-color="#86efac" stop-opacity="0"/>
-        </linearGradient>
         <filter id="glow"><feGaussianBlur stdDeviation="2"/></filter>
       </defs>
-      <line x1="0" y1="${yMap(0)}" x2="${W}" y2="${yMap(0)}" stroke="#1e5743" stroke-dasharray="2,4"/>
-      <line x1="0" y1="${yMap(9.3)}" x2="${W}" y2="${yMap(9.3)}" stroke="#2e7e5e" stroke-dasharray="6,4" opacity="0.7"/>
-      <path d="${pathFrom(perDqn)}" fill="none" stroke="#f5b942" stroke-width="1.2" opacity="0.85"/>
-      <path d="${pathFrom(iqn)}" fill="none" stroke="#67e8f9" stroke-width="1.2" opacity="0.55"/>
-      <path d="${areaFrom(rainbow)}" fill="url(#rgrad)"/>
-      <path d="${pathFrom(rainbow)}" fill="none" stroke="#86efac" stroke-width="2" filter="url(#glow)" opacity="0.7"/>
-      <path d="${pathFrom(rainbow)}" fill="none" stroke="#b9fbc0" stroke-width="1.4"/>
-      <circle cx="${rainbow[rainbow.length - 1][0]}" cy="${yMap(rainbow[rainbow.length - 1][1])}" r="3" fill="#b9fbc0"/>
-      <circle cx="${rainbow[rainbow.length - 1][0]}" cy="${yMap(rainbow[rainbow.length - 1][1])}" r="6" fill="none" stroke="#b9fbc0" opacity="0.4"/>
+      ${yZero}
+      ${paths}
+      ${legend}
+      ${xLabels}
+      ${yLabels}
     `;
   }
 
@@ -586,16 +663,95 @@
 
   /* ───────── init ───────── */
 
+  /* ───────── training subprocess control ───────── */
+
+  async function startTrainingJob() {
+    const body = {
+      algo: state.selected.algo_module,
+      game: state.selected.game,
+      num_iterations: 1,
+      num_train_steps: 5000,
+      num_eval_steps: 500,
+    };
+    appendLog("info", "train", `start request · ${body.algo} · ${body.game} · ${body.num_train_steps} steps`);
+    try {
+      const resp = await fetch("/api/training/start", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const data = await resp.json();
+      if (data.error) {
+        appendLog("err", "train", `start failed: ${data.error}`);
+        return;
+      }
+      appendLog("ok", "train", `job ${data.job_id} · pid ${data.pid} · log ${data.log_path}`);
+      // Poll job status every 2 seconds while running.
+      const poll = setInterval(async () => {
+        const r = await fetch("/api/training/jobs");
+        const d = await r.json();
+        const job = d.items.find((j) => j.job_id === data.job_id);
+        if (!job) { clearInterval(poll); return; }
+        if (job.status !== "running") {
+          clearInterval(poll);
+          appendLog(job.status === "exited" ? "ok" : "err", "train", `job ${data.job_id} → ${job.status} (rc=${job.returncode})`);
+          // Refresh chart once the run finishes.
+          setTimeout(() => renderChartFromRuns(), 1500);
+        }
+      }, 2000);
+    } catch (err) {
+      appendLog("err", "train", `${err}`);
+    }
+  }
+
+  function wireTrainButton() {
+    // Find a sensible host element to inject the button. The hyperparameters
+    // panel head has room; falling back to the document body keeps it usable.
+    const liveChip = document.querySelector('.panel-head .chip[data-kind="live"]')
+      || [...document.querySelectorAll(".panel-head .chip")].find(c => c.textContent.toUpperCase().includes("LIVE"));
+    let host = null;
+    if (liveChip) {
+      host = liveChip.parentElement;
+    } else {
+      // Place near the transport bar above the chart.
+      host = document.querySelector(".transport") || document.body;
+    }
+    if (!host) return;
+
+    const btn = document.createElement("button");
+    btn.id = "train-btn";
+    btn.textContent = "▶ TRAIN 5K";
+    btn.title = "Start a 5000-step training run with the selected algo/game (writes to runs/)";
+    btn.style.cssText = `
+      margin-left: 8px;
+      background: var(--bg-2);
+      border: 1px solid var(--line-bright);
+      color: var(--fg-bright);
+      font-family: var(--mono);
+      font-size: 10px;
+      letter-spacing: 0.12em;
+      padding: 3px 8px;
+      cursor: pointer;
+    `;
+    btn.addEventListener("mouseenter", () => { btn.style.background = "var(--bg-3)"; });
+    btn.addEventListener("mouseleave", () => { btn.style.background = "var(--bg-2)"; });
+    btn.addEventListener("click", () => startTrainingJob());
+    host.appendChild(btn);
+  }
+
+  /* ───────── init ───────── */
+
   async function init() {
     await loadCatalog();
     renderAlgoRail();
     renderGameGrid();
     renderActions();
-    renderChart();
+    renderChartFromRuns();
     renderEventLog();
     startGameSim();
     startClock();
     wireToggles();
+    wireTrainButton();
     selectAlgo(state.selected.algo_module);
     selectGame(state.selected.game);
   }
