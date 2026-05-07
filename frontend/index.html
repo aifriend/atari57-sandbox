@@ -1,0 +1,1616 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>ATARI57 // Research Sandbox</title>
+<meta name="viewport" content="width=1600" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=VT323&family=JetBrains+Mono:wght@300;400;500;700&family=Space+Grotesk:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+/* ─────────────────────────────────────────────────────────────
+   PHOSPHOR — a CRT research console
+   ───────────────────────────────────────────────────────────── */
+:root {
+  --bg-0: #050a08;
+  --bg-1: #081511;
+  --bg-2: #0c1f19;
+  --bg-3: #112b22;
+  --line: #163a2e;
+  --line-bright: #1e5743;
+
+  --fg-dim: #2e7e5e;
+  --fg: #4ade80;
+  --fg-bright: #86efac;
+  --fg-glow: #b9fbc0;
+
+  --amber: #f5b942;
+  --red: #ef4444;
+  --magenta: #e879f9;
+  --cyan: #67e8f9;
+  --blue: #60a5fa;
+
+  --mono: "JetBrains Mono", ui-monospace, monospace;
+  --crt:  "VT323", "JetBrains Mono", monospace;
+  --sans: "Space Grotesk", system-ui, sans-serif;
+}
+
+* { box-sizing: border-box; }
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg-0);
+  color: var(--fg);
+  font-family: var(--mono);
+  font-size: 12px;
+  line-height: 1.45;
+  letter-spacing: 0.01em;
+  min-height: 100vh;
+  overflow-x: auto;
+}
+
+/* CRT scanlines + vignette over the whole app */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 999;
+  background:
+    repeating-linear-gradient(
+      to bottom,
+      rgba(0,0,0,0) 0px,
+      rgba(0,0,0,0) 2px,
+      rgba(0,0,0,0.18) 3px,
+      rgba(0,0,0,0) 4px
+    );
+  mix-blend-mode: multiply;
+}
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 998;
+  background: radial-gradient(
+    ellipse at center,
+    rgba(0,0,0,0) 55%,
+    rgba(0,0,0,0.55) 100%
+  );
+}
+
+/* phosphor flicker */
+@keyframes flicker {
+  0%, 100% { opacity: 1; }
+  47% { opacity: 0.985; }
+  48% { opacity: 0.96; }
+  49% { opacity: 1; }
+  92% { opacity: 0.99; }
+}
+.app { animation: flicker 4.5s infinite; }
+
+/* ────── Layout shell ────── */
+.app {
+  display: grid;
+  grid-template-rows: 44px 1fr 28px;
+  grid-template-columns: 1fr;
+  width: 1600px;
+  min-width: 1600px;
+  max-width: 1600px;
+  height: 1000px;
+  margin: 0 auto;
+  overflow: hidden;
+}
+.bar {
+  border-bottom: 1px solid var(--line);
+  background: linear-gradient(180deg, var(--bg-1), var(--bg-0));
+  display: flex;
+  align-items: stretch;
+}
+.bar.bot {
+  border-top: 1px solid var(--line);
+  border-bottom: 0;
+  font-size: 11px;
+}
+.bar .cell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 14px;
+  border-right: 1px solid var(--line);
+  white-space: nowrap;
+  height: 100%;
+}
+.bar .cell.ghost { color: var(--fg-dim); }
+.bar .cell .lbl { color: var(--fg-dim); }
+.bar .cell .val { color: var(--fg-bright); }
+.bar .cell.flex { flex: 1; border-right: 1px solid var(--line); }
+.bar .cell.right { margin-left: auto; border-right: 0; border-left: 1px solid var(--line); }
+
+.brand {
+  font-family: var(--crt);
+  font-size: 24px;
+  letter-spacing: 0.18em;
+  color: var(--fg-glow);
+  text-shadow: 0 0 6px rgba(134,239,172,0.55), 0 0 14px rgba(74,222,128,0.35);
+  padding: 0 18px 0 18px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border-right: 1px solid var(--line);
+}
+.brand .blink {
+  width: 8px;
+  height: 14px;
+  background: var(--fg-bright);
+  box-shadow: 0 0 6px var(--fg-bright);
+  animation: caret 1.05s steps(1) infinite;
+  display: inline-block;
+}
+@keyframes caret { 50% { opacity: 0; } }
+
+.led {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: var(--fg);
+  box-shadow: 0 0 6px var(--fg);
+  display: inline-block;
+}
+.led.amber { background: var(--amber); box-shadow: 0 0 6px var(--amber); }
+.led.red   { background: var(--red);   box-shadow: 0 0 6px var(--red); }
+.led.cyan  { background: var(--cyan);  box-shadow: 0 0 6px var(--cyan); }
+.led.dim   { background: var(--fg-dim); box-shadow: none; }
+
+.main {
+  display: grid;
+  grid-template-columns: 280px minmax(0, 1fr) 360px;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.col {
+  border-right: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+.col:last-child { border-right: 0; }
+
+.panel {
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.panel:last-child { border-bottom: 0; flex: 1; }
+
+.panel-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  font-size: 10.5px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--fg-dim);
+  background: var(--bg-1);
+  border-bottom: 1px solid var(--line);
+  height: 28px;
+  flex-shrink: 0;
+}
+.panel-head .num { color: var(--fg); margin-right: 2px; }
+.panel-head .grow { flex: 1; }
+.panel-head .chip {
+  font-size: 9px;
+  letter-spacing: 0.14em;
+  border: 1px solid var(--line-bright);
+  color: var(--fg);
+  padding: 1px 5px;
+  background: var(--bg-2);
+}
+.panel-body { padding: 10px 12px; overflow-y: auto; min-height: 0; }
+.panel-body.tight { padding: 0; }
+
+/* ────── Sidebar — algorithms + games ────── */
+.algo-group {
+  margin-bottom: 8px;
+}
+.algo-group .gh {
+  font-size: 9.5px;
+  color: var(--fg-dim);
+  letter-spacing: 0.16em;
+  margin: 8px 0 4px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.algo-group .gh::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--line);
+}
+.algo {
+  display: grid;
+  grid-template-columns: 14px 1fr 38px;
+  gap: 6px;
+  padding: 3px 4px;
+  font-size: 11.5px;
+  cursor: pointer;
+  align-items: center;
+  border: 1px solid transparent;
+}
+.algo .glyph { color: var(--fg-dim); }
+.algo .name  { color: var(--fg); }
+.algo .perf  { color: var(--fg-dim); text-align: right; font-size: 10px; }
+.algo:hover { background: var(--bg-2); border-color: var(--line); }
+.algo.on {
+  background: var(--bg-3);
+  border-color: var(--line-bright);
+  color: var(--fg-bright);
+}
+.algo.on .name { color: var(--fg-glow); text-shadow: 0 0 5px rgba(134,239,172,0.5); }
+.algo.on .glyph { color: var(--fg-bright); }
+
+.search {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--line);
+  background: var(--bg-1);
+  font-size: 11px;
+  color: var(--fg-dim);
+}
+.search .pre { color: var(--fg); }
+.search input {
+  flex: 1;
+  background: transparent;
+  border: 0;
+  color: var(--fg-bright);
+  font-family: var(--mono);
+  font-size: 11px;
+  outline: none;
+}
+
+.game-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+  padding: 8px;
+}
+.game-cell {
+  aspect-ratio: 1 / 1;
+  border: 1px solid var(--line);
+  background: var(--bg-1);
+  font-family: var(--crt);
+  font-size: 11px;
+  color: var(--fg-dim);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  cursor: pointer;
+  position: relative;
+  line-height: 1;
+  padding: 2px;
+}
+.game-cell:hover { color: var(--fg); border-color: var(--line-bright); }
+.game-cell.trained { color: var(--fg); }
+.game-cell.trained::before {
+  content: "";
+  position: absolute;
+  top: 1px; right: 1px;
+  width: 4px; height: 4px;
+  background: var(--fg-bright);
+  box-shadow: 0 0 3px var(--fg-bright);
+}
+.game-cell.expert { color: var(--amber); }
+.game-cell.expert::before {
+  content: "";
+  position: absolute;
+  top: 1px; right: 1px;
+  width: 4px; height: 4px;
+  background: var(--amber);
+  box-shadow: 0 0 3px var(--amber);
+}
+.game-cell.on {
+  background: var(--bg-3);
+  border-color: var(--fg);
+  color: var(--fg-glow);
+  text-shadow: 0 0 4px var(--fg);
+  box-shadow: inset 0 0 0 1px var(--line-bright);
+}
+
+/* ────── Center column — viewport + charts ────── */
+.center { display: flex; flex-direction: column; }
+
+.viewport-wrap {
+  flex: 0 0 auto;
+  position: relative;
+  background:
+    radial-gradient(ellipse at center, #06120e 0%, #020706 100%);
+  padding: 16px;
+  border-bottom: 1px solid var(--line);
+}
+.viewport {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 10;
+  height: 470px;
+  border: 1px solid var(--line-bright);
+  background: #000;
+  overflow: hidden;
+  box-shadow:
+    inset 0 0 60px rgba(74,222,128,0.18),
+    inset 0 0 0 4px #000,
+    0 0 40px rgba(74,222,128,0.05);
+  border-radius: 6px;
+}
+.viewport::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    repeating-linear-gradient(
+      to bottom,
+      rgba(0,0,0,0) 0px,
+      rgba(0,0,0,0) 2px,
+      rgba(0,0,0,0.35) 3px,
+      rgba(0,0,0,0) 4px
+    );
+}
+.viewport canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+  image-rendering: pixelated;
+}
+
+.viewport .hud {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  padding: 14px 18px;
+  font-family: var(--crt);
+  font-size: 22px;
+  letter-spacing: 0.06em;
+  color: var(--fg-bright);
+  text-shadow: 0 0 6px rgba(134,239,172,0.7);
+}
+.hud .hud-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+}
+.hud .hud-bot {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  font-size: 16px;
+  color: var(--fg);
+}
+.hud .small { font-size: 14px; color: var(--fg); letter-spacing: 0.18em; }
+.hud .rec {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.2em;
+  color: var(--red);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.hud .rec .led { background: var(--red); box-shadow: 0 0 6px var(--red); animation: rec 1.4s steps(1) infinite; }
+@keyframes rec { 50% { opacity: 0.2; } }
+
+/* corner brackets in viewport */
+.bracket {
+  position: absolute;
+  width: 18px; height: 18px;
+  border-color: var(--fg);
+}
+.bracket.tl { top: 8px; left: 8px; border-top: 1px solid; border-left: 1px solid; }
+.bracket.tr { top: 8px; right: 8px; border-top: 1px solid; border-right: 1px solid; }
+.bracket.bl { bottom: 8px; left: 8px; border-bottom: 1px solid; border-left: 1px solid; }
+.bracket.br { bottom: 8px; right: 8px; border-bottom: 1px solid; border-right: 1px solid; }
+
+/* transport controls */
+.transport {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  border-bottom: 1px solid var(--line);
+  background: var(--bg-1);
+  height: 44px;
+  flex-shrink: 0;
+}
+.tbtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  width: 44px;
+  background: transparent;
+  border: 0;
+  border-right: 1px solid var(--line);
+  color: var(--fg);
+  cursor: pointer;
+  font-family: var(--mono);
+  font-size: 14px;
+}
+.tbtn:hover { background: var(--bg-2); color: var(--fg-bright); }
+.tbtn.primary { color: var(--fg-glow); text-shadow: 0 0 6px var(--fg); width: 56px; }
+.tbtn.primary.on { background: var(--bg-3); }
+.tbtn .ic { width: 14px; height: 14px; display: block; }
+
+.scrubber {
+  flex: 1;
+  height: 100%;
+  position: relative;
+  display: flex;
+  align-items: center;
+  padding: 0 14px;
+  border-right: 1px solid var(--line);
+  cursor: pointer;
+}
+.scrubber .track {
+  position: relative;
+  width: 100%;
+  height: 14px;
+  border: 1px solid var(--line);
+  background: var(--bg-2);
+  display: flex;
+  align-items: center;
+  padding: 0 1px;
+  overflow: hidden;
+}
+.scrubber .ticks {
+  position: absolute;
+  inset: 0;
+  background-image: repeating-linear-gradient(
+    to right,
+    transparent 0,
+    transparent 19px,
+    var(--line) 19px,
+    var(--line) 20px
+  );
+}
+.scrubber .fill {
+  height: 100%;
+  background: linear-gradient(90deg, rgba(74,222,128,0.25), rgba(74,222,128,0.55));
+  width: 38%;
+  box-shadow: inset 0 0 10px rgba(134,239,172,0.4);
+}
+.scrubber .head {
+  position: absolute;
+  top: 50%;
+  left: calc(38% + 14px);
+  transform: translate(-50%, -50%);
+  width: 2px;
+  height: 22px;
+  background: var(--fg-glow);
+  box-shadow: 0 0 8px var(--fg-bright);
+}
+.scrubber .stamp {
+  position: absolute;
+  top: -2px;
+  font-size: 9px;
+  color: var(--fg-dim);
+  letter-spacing: 0.1em;
+}
+.scrubber .stamp.left { left: 14px; }
+.scrubber .stamp.right { right: 14px; }
+.transport .meta {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 0 14px;
+  font-size: 10.5px;
+  color: var(--fg-dim);
+  height: 100%;
+  border-right: 1px solid var(--line);
+}
+.transport .meta b { color: var(--fg-bright); font-weight: 500; }
+.transport .speed {
+  display: flex;
+  align-items: center;
+  height: 100%;
+}
+.transport .speed .opt {
+  height: 100%;
+  padding: 0 8px;
+  display: flex;
+  align-items: center;
+  border-right: 1px solid var(--line);
+  font-size: 10.5px;
+  color: var(--fg-dim);
+  cursor: pointer;
+}
+.transport .speed .opt:last-child { border-right: 0; }
+.transport .speed .opt.on { color: var(--fg-glow); background: var(--bg-3); }
+
+/* center bottom row: charts + actions */
+.center-bot {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 1fr 320px;
+  min-height: 0;
+}
+.chart-panel { display: flex; flex-direction: column; min-height: 0; border-right: 1px solid var(--line); }
+.action-panel { display: flex; flex-direction: column; min-height: 0; }
+
+.chart-tabs {
+  display: flex;
+  height: 28px;
+  border-bottom: 1px solid var(--line);
+  background: var(--bg-1);
+  flex-shrink: 0;
+}
+.chart-tab {
+  display: flex;
+  align-items: center;
+  padding: 0 14px;
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--fg-dim);
+  border-right: 1px solid var(--line);
+  cursor: pointer;
+  gap: 8px;
+}
+.chart-tab .v { font-family: var(--mono); color: var(--fg); letter-spacing: 0.04em; text-transform: none; }
+.chart-tab.on { color: var(--fg-glow); background: var(--bg-3); }
+.chart-tab.on .v { color: var(--fg-bright); }
+
+.chart-canvas {
+  flex: 1;
+  position: relative;
+  background:
+    linear-gradient(var(--bg-0), var(--bg-0)),
+    repeating-linear-gradient(to right, transparent 0 47px, var(--line) 47px 48px),
+    repeating-linear-gradient(to bottom, transparent 0 31px, var(--line) 31px 32px);
+  background-blend-mode: normal, screen, screen;
+  background-color: var(--bg-0);
+  background-image:
+    repeating-linear-gradient(to right, transparent 0 47px, rgba(30,87,67,0.4) 47px 48px),
+    repeating-linear-gradient(to bottom, transparent 0 31px, rgba(30,87,67,0.4) 31px 32px);
+  min-height: 0;
+}
+.chart-canvas svg { width: 100%; height: 100%; display: block; }
+.chart-legend {
+  position: absolute;
+  top: 8px; left: 12px;
+  display: flex;
+  gap: 14px;
+  font-size: 10px;
+  color: var(--fg-dim);
+  letter-spacing: 0.06em;
+}
+.chart-legend .item { display: flex; align-items: center; gap: 6px; }
+.chart-legend .sw { width: 10px; height: 2px; }
+.chart-yaxis {
+  position: absolute;
+  top: 0; bottom: 0; left: 0;
+  width: 36px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 6px 4px 24px 6px;
+  font-size: 9px;
+  color: var(--fg-dim);
+  font-family: var(--mono);
+}
+.chart-xaxis {
+  position: absolute;
+  bottom: 4px; left: 36px; right: 6px;
+  display: flex;
+  justify-content: space-between;
+  font-size: 9px;
+  color: var(--fg-dim);
+  font-family: var(--mono);
+}
+.chart-readout {
+  position: absolute;
+  top: 8px; right: 12px;
+  font-size: 10px;
+  color: var(--fg-dim);
+  text-align: right;
+  font-family: var(--mono);
+  letter-spacing: 0.04em;
+}
+.chart-readout b { color: var(--fg-bright); font-weight: 500; }
+
+/* action distribution bars */
+.actions {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  padding: 10px 12px;
+  gap: 6px;
+  overflow-y: auto;
+}
+.act {
+  display: grid;
+  grid-template-columns: 70px 1fr 56px;
+  gap: 8px;
+  align-items: center;
+  font-size: 10.5px;
+}
+.act .nm { color: var(--fg); letter-spacing: 0.04em; }
+.act .nm.hot { color: var(--fg-glow); text-shadow: 0 0 4px var(--fg); }
+.act .bar {
+  position: relative;
+  height: 14px;
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  overflow: hidden;
+}
+.act .bar .f {
+  height: 100%;
+  background:
+    repeating-linear-gradient(
+      90deg,
+      var(--fg) 0 4px,
+      var(--bg-1) 4px 5px
+    );
+  box-shadow: 0 0 6px rgba(74,222,128,0.4);
+}
+.act .bar.q .f {
+  background: repeating-linear-gradient(
+    90deg, var(--cyan) 0 4px, var(--bg-1) 4px 5px
+  );
+  box-shadow: 0 0 6px rgba(103,232,249,0.4);
+}
+.act .v { color: var(--fg-bright); font-family: var(--mono); text-align: right; font-size: 10.5px; }
+
+.act-toggle {
+  display: flex;
+  border-bottom: 1px solid var(--line);
+  background: var(--bg-1);
+  height: 28px;
+  flex-shrink: 0;
+}
+.act-toggle .opt {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  color: var(--fg-dim);
+  border-right: 1px solid var(--line);
+  cursor: pointer;
+  text-transform: uppercase;
+}
+.act-toggle .opt:last-child { border-right: 0; }
+.act-toggle .opt.on { color: var(--fg-glow); background: var(--bg-3); }
+
+/* ────── Right inspector ────── */
+.kv {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 4px 12px;
+  font-size: 11px;
+}
+.kv .k { color: var(--fg-dim); letter-spacing: 0.04em; }
+.kv .v { color: var(--fg-bright); font-family: var(--mono); text-align: right; }
+.kv .v.mono { font-family: var(--mono); }
+
+.hp {
+  display: grid;
+  grid-template-columns: 110px 1fr 56px;
+  gap: 8px;
+  align-items: center;
+  font-size: 10.5px;
+  padding: 4px 0;
+  border-bottom: 1px dashed var(--line);
+}
+.hp:last-child { border-bottom: 0; }
+.hp .lab { color: var(--fg-dim); }
+.hp .val { color: var(--fg-bright); font-family: var(--mono); text-align: right; font-size: 11px; }
+.hp .slid {
+  position: relative;
+  height: 12px;
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  cursor: pointer;
+}
+.hp .slid .ff {
+  height: 100%;
+  background: var(--fg);
+  box-shadow: 0 0 6px rgba(74,222,128,0.5);
+}
+.hp .slid .nub {
+  position: absolute;
+  top: -3px;
+  width: 4px;
+  height: 18px;
+  background: var(--fg-glow);
+  box-shadow: 0 0 6px var(--fg);
+  transform: translateX(-50%);
+}
+
+.hp .input {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--fg-bright);
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  padding: 2px 5px;
+  text-align: right;
+}
+
+.architecture {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--fg);
+  line-height: 1.55;
+  padding: 8px 0;
+}
+.architecture .layer {
+  display: grid;
+  grid-template-columns: 16px 1fr auto;
+  gap: 6px;
+  align-items: center;
+  padding: 2px 4px;
+}
+.architecture .layer:hover { background: var(--bg-2); }
+.architecture .layer .gl { color: var(--fg-dim); }
+.architecture .layer .nm { color: var(--fg-bright); }
+.architecture .layer .sh { color: var(--fg-dim); font-size: 10px; }
+.architecture .layer.head .nm { color: var(--amber); }
+.architecture .layer.in   .nm { color: var(--cyan); }
+
+/* event log */
+.log {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  line-height: 1.5;
+  padding: 8px 12px;
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
+}
+.log .row {
+  display: grid;
+  grid-template-columns: 56px 36px 1fr;
+  gap: 8px;
+  padding: 1px 0;
+  border-bottom: 1px solid transparent;
+}
+.log .row:hover { background: var(--bg-2); }
+.log .ts { color: var(--fg-dim); }
+.log .lvl { letter-spacing: 0.06em; font-weight: 500; }
+.log .lvl.info { color: var(--fg); }
+.log .lvl.ok   { color: var(--fg-glow); }
+.log .lvl.warn { color: var(--amber); }
+.log .lvl.err  { color: var(--red); }
+.log .lvl.evt  { color: var(--cyan); }
+.log .msg { color: var(--fg-bright); }
+.log .msg b { color: var(--fg-glow); font-weight: 500; }
+.log .msg .dim { color: var(--fg-dim); }
+
+/* compare panel */
+.cmp {
+  display: grid;
+  grid-template-columns: 90px 1fr 56px;
+  gap: 8px;
+  align-items: center;
+  padding: 5px 0;
+  border-bottom: 1px dashed var(--line);
+  font-size: 10.5px;
+}
+.cmp:last-child { border-bottom: 0; }
+.cmp .nm { color: var(--fg); }
+.cmp .nm.me { color: var(--fg-glow); text-shadow: 0 0 4px var(--fg); }
+.cmp .bar {
+  position: relative;
+  height: 8px;
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+}
+.cmp .bar .f { height: 100%; background: var(--fg); box-shadow: 0 0 6px var(--fg); }
+.cmp .bar .f.amber { background: var(--amber); box-shadow: 0 0 6px var(--amber); }
+.cmp .bar .f.cyan  { background: var(--cyan);  box-shadow: 0 0 6px var(--cyan); }
+.cmp .bar .f.mag   { background: var(--magenta); box-shadow: 0 0 6px var(--magenta); }
+.cmp .bar .f.red   { background: var(--red); box-shadow: 0 0 6px var(--red); }
+.cmp .v  { color: var(--fg-bright); font-family: var(--mono); text-align: right; font-size: 11px; }
+.cmp .nm small { color: var(--fg-dim); margin-left: 4px; font-size: 9.5px; }
+
+/* footer ticker */
+.bar.bot { min-width: 0; }
+.bar.bot .ticker {
+  flex: 1 1 0;
+  min-width: 0;
+  overflow: hidden;
+  position: relative;
+  border-right: 1px solid var(--line);
+  display: flex;
+  align-items: center;
+  height: 100%;
+}
+.bar.bot .ticker .strip {
+  white-space: nowrap;
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translate(0%, -50%);
+  animation: tick 60s linear infinite;
+  color: var(--fg-dim);
+  font-size: 10.5px;
+  letter-spacing: 0.04em;
+  will-change: transform;
+}
+.bar.bot .ticker .strip b { color: var(--fg-bright); font-weight: 400; }
+.bar.bot .ticker .strip .sep { color: var(--line-bright); margin: 0 14px; }
+@keyframes tick {
+  from { transform: translate(100%, -50%); }
+  to   { transform: translate(-100%, -50%); }
+}
+
+/* small util */
+.spacer { flex: 1; }
+.dim { color: var(--fg-dim); }
+.bright { color: var(--fg-bright); }
+.glow { color: var(--fg-glow); text-shadow: 0 0 5px var(--fg); }
+
+/* sparkline boxes inside game grid tooltip-style */
+.scroll-area { overflow-y: auto; min-height: 0; flex: 1; }
+
+/* ─── ASCII sprite rendered into the viewport ─── */
+.viewport-art {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+.viewport-art canvas {
+  width: 92%;
+  height: 84%;
+  filter:
+    drop-shadow(0 0 4px rgba(74,222,128,0.6))
+    drop-shadow(0 0 12px rgba(74,222,128,0.25));
+}
+
+/* breath glow for "live" things */
+@keyframes breath {
+  0%, 100% { opacity: 0.85; }
+  50% { opacity: 1; }
+}
+.breath { animation: breath 2.6s ease-in-out infinite; }
+
+/* checkbox-like trained marker in rows */
+.tag {
+  display: inline-block;
+  padding: 0 5px;
+  font-size: 9px;
+  letter-spacing: 0.16em;
+  border: 1px solid var(--line-bright);
+  color: var(--fg);
+  background: var(--bg-2);
+  text-transform: uppercase;
+}
+.tag.amber { color: var(--amber); border-color: rgba(245,185,66,0.5); }
+.tag.red { color: var(--red); border-color: rgba(239,68,68,0.45); }
+.tag.cyan { color: var(--cyan); border-color: rgba(103,232,249,0.4); }
+
+/* hyperparam header strip */
+.hp-strip {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  background: var(--bg-1);
+}
+.hp-strip .cell {
+  padding: 6px 10px;
+  border-right: 1px solid var(--line);
+  font-size: 10px;
+  color: var(--fg-dim);
+}
+.hp-strip .cell:last-child { border-right: 0; }
+.hp-strip .cell b {
+  display: block;
+  color: var(--fg-bright);
+  font-size: 14px;
+  font-family: var(--mono);
+  margin-top: 2px;
+  font-weight: 500;
+}
+</style>
+</head>
+<body>
+<div class="app" id="app">
+
+  <!-- ─────── Top bar ─────── -->
+  <header class="bar">
+    <div class="brand">ATARI57<span class="blink"></span></div>
+    <div class="cell"><span class="led"></span><span class="lbl">EXP</span><span class="val">e_0428_rainbow_pong</span></div>
+    <div class="cell"><span class="lbl">ALGO</span><span class="val">Rainbow</span></div>
+    <div class="cell"><span class="lbl">GAME</span><span class="val" id="game-label">Pong</span></div>
+    <div class="cell"><span class="lbl">SEED</span><span class="val">0x2A1F</span></div>
+    <div class="cell"><span class="lbl">DEVICE</span><span class="val">mps:0</span></div>
+    <div class="cell ghost"><span class="led amber"></span><span class="lbl">FPS</span><span class="val" id="fps">60.0</span></div>
+    <div class="cell flex"></div>
+    <div class="cell"><span class="lbl">UPTIME</span><span class="val" id="uptime">04:21:08</span></div>
+    <div class="cell"><span class="lbl">SAVE</span><span class="val">auto · 90s</span></div>
+    <div class="cell right"><span class="led cyan"></span><span class="lbl">TENSORBOARD</span><span class="val">:6006</span></div>
+  </header>
+
+  <!-- ─────── Main ─────── -->
+  <div class="main">
+
+    <!-- ╭── LEFT: algos + 57 games ──╮ -->
+    <aside class="col">
+
+      <div class="search">
+        <span class="pre">[ALGO]</span><span class="pre">$</span>
+        <input type="text" value="rainbow" />
+        <span class="dim">↵</span>
+      </div>
+
+      <div class="panel" style="flex: 1.2;">
+        <div class="panel-head">
+          <span class="num">01</span> AGENTS · DEEP_RL_ZOO
+          <span class="grow"></span>
+          <span class="chip">19</span>
+        </div>
+        <div class="panel-body scroll-area">
+
+          <div class="algo-group">
+            <div class="gh">VALUE-BASED</div>
+            <div class="algo"><span class="glyph">▸</span><span class="name">DQN</span><span class="perf">+8.1</span></div>
+            <div class="algo"><span class="glyph">▸</span><span class="name">Double DQN</span><span class="perf">+11.4</span></div>
+            <div class="algo"><span class="glyph">▸</span><span class="name">Prioritized DQN</span><span class="perf">+14.0</span></div>
+            <div class="algo"><span class="glyph">▸</span><span class="name">DRQN</span><span class="perf">+6.2</span></div>
+            <div class="algo"><span class="glyph">▸</span><span class="name">R2D2</span><span class="perf">+18.7</span></div>
+            <div class="algo"><span class="glyph">▸</span><span class="name">NGU</span><span class="perf dim">—</span></div>
+            <div class="algo"><span class="glyph">▸</span><span class="name">Agent57</span><span class="perf dim">—</span></div>
+          </div>
+
+          <div class="algo-group">
+            <div class="gh">DISTRIBUTIONAL</div>
+            <div class="algo"><span class="glyph">▸</span><span class="name">C51 DQN</span><span class="perf">+9.5</span></div>
+            <div class="algo on"><span class="glyph">▶</span><span class="name">Rainbow</span><span class="perf">+10.3</span></div>
+            <div class="algo"><span class="glyph">▸</span><span class="name">QR-DQN</span><span class="perf">+12.8</span></div>
+            <div class="algo"><span class="glyph">▸</span><span class="name">IQN</span><span class="perf">−2.5</span></div>
+          </div>
+
+          <div class="algo-group">
+            <div class="gh">POLICY-BASED</div>
+            <div class="algo"><span class="glyph">▸</span><span class="name">REINFORCE</span><span class="perf">+1.8</span></div>
+            <div class="algo"><span class="glyph">▸</span><span class="name">Actor-Critic</span><span class="perf">+5.2</span></div>
+            <div class="algo"><span class="glyph">▸</span><span class="name">A2C</span><span class="perf">+6.7</span></div>
+            <div class="algo"><span class="glyph">▸</span><span class="name">SAC</span><span class="perf">+4.4</span></div>
+            <div class="algo"><span class="glyph">▸</span><span class="name">PPO</span><span class="perf">+12.0</span></div>
+            <div class="algo"><span class="glyph">▸</span><span class="name">PPO + ICM</span><span class="perf">+8.9</span></div>
+            <div class="algo"><span class="glyph">▸</span><span class="name">PPO + RND</span><span class="perf">0.0</span></div>
+            <div class="algo"><span class="glyph">▸</span><span class="name">IMPALA</span><span class="perf">+7.6</span></div>
+          </div>
+
+        </div>
+      </div>
+
+      <div class="panel" style="flex: 1;">
+        <div class="panel-head">
+          <span class="num">02</span> ATARI · 57 GAMES
+          <span class="grow"></span>
+          <span class="chip">4 / 57</span>
+        </div>
+        <div class="panel-body tight scroll-area">
+          <div class="game-grid" id="game-grid"></div>
+        </div>
+      </div>
+
+    </aside>
+
+    <!-- ╭── CENTER: viewport + charts + actions ──╮ -->
+    <section class="col center">
+
+      <!-- viewport -->
+      <div class="viewport-wrap">
+        <div class="viewport">
+          <canvas id="game-canvas" width="160" height="100"></canvas>
+
+          <div class="bracket tl"></div>
+          <div class="bracket tr"></div>
+          <div class="bracket bl"></div>
+          <div class="bracket br"></div>
+
+          <div class="hud">
+            <div class="hud-top">
+              <div>
+                <span class="small">P1 AGENT</span><br/>
+                <span id="hud-score">14</span>
+              </div>
+              <div class="rec"><span class="led"></span>REC · ep_4128.mp4</div>
+              <div style="text-align: right;">
+                <span class="small">CPU</span><br/>
+                <span id="hud-score-2">06</span>
+              </div>
+            </div>
+            <div></div>
+            <div class="hud-bot">
+              <div><span class="small dim">FRAME</span> <span id="hud-frame">1,824,503</span></div>
+              <div><span class="small dim">EPISODE</span> 4128 / ∞</div>
+              <div><span class="small dim">REWARD</span> <span class="glow">+1.000</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- transport -->
+      <div class="transport">
+        <button class="tbtn" title="step back">
+          <svg class="ic" viewBox="0 0 16 16"><path d="M3 2v12h2V2zM14 2L7 8l7 6z" fill="currentColor"/></svg>
+        </button>
+        <button class="tbtn primary on" id="play-btn" title="play / pause">
+          <svg class="ic" viewBox="0 0 16 16" id="play-icon"><rect x="3" y="2" width="3" height="12" fill="currentColor"/><rect x="10" y="2" width="3" height="12" fill="currentColor"/></svg>
+        </button>
+        <button class="tbtn" title="step forward">
+          <svg class="ic" viewBox="0 0 16 16"><path d="M11 2v12h2V2zM2 2l7 6-7 6z" fill="currentColor"/></svg>
+        </button>
+        <button class="tbtn" title="reset">
+          <svg class="ic" viewBox="0 0 16 16"><path d="M3 2h2v5l8-5v12l-8-5v5H3z" fill="currentColor"/></svg>
+        </button>
+
+        <div class="scrubber">
+          <span class="stamp left">EP 4128 · F 0</span>
+          <div class="track">
+            <div class="ticks"></div>
+            <div class="fill"></div>
+          </div>
+          <div class="head"></div>
+          <span class="stamp right">F 4,800</span>
+        </div>
+
+        <div class="meta">
+          <span><span class="dim">step</span> <b id="step-count">1,825,917</b></span>
+          <span><span class="dim">ε</span> <b>0.024</b></span>
+          <span><span class="dim">γ</span> <b>0.997</b></span>
+        </div>
+
+        <div class="speed">
+          <div class="opt">¼×</div>
+          <div class="opt">½×</div>
+          <div class="opt on">1×</div>
+          <div class="opt">4×</div>
+          <div class="opt">∞</div>
+        </div>
+      </div>
+
+      <!-- bottom: chart + actions -->
+      <div class="center-bot">
+
+        <div class="chart-panel">
+          <div class="chart-tabs">
+            <div class="chart-tab on">EPISODE RETURN <span class="v">+10.3</span></div>
+            <div class="chart-tab">TD-LOSS <span class="v">0.018</span></div>
+            <div class="chart-tab">VALUE <span class="v">+0.42</span></div>
+            <div class="chart-tab">ENTROPY <span class="v">1.78</span></div>
+            <div class="chart-tab">FPS <span class="v">312</span></div>
+          </div>
+          <div class="chart-canvas" id="chart-canvas">
+            <div class="chart-legend">
+              <div class="item"><span class="sw" style="background:var(--fg-glow); box-shadow:0 0 4px var(--fg);"></span>Rainbow · Pong</div>
+              <div class="item"><span class="sw" style="background:var(--amber);"></span>PER-DQN · Pong</div>
+              <div class="item"><span class="sw" style="background:var(--cyan); opacity:0.5"></span>IQN · Pong</div>
+              <div class="item"><span class="sw" style="background:var(--fg-dim); border-top:1px dashed var(--fg-dim);"></span>human ref</div>
+            </div>
+            <div class="chart-readout">
+              <div><b>μ<sub>100</sub></b> +9.84</div>
+              <div>σ 2.71 · max +18</div>
+            </div>
+            <div class="chart-yaxis">
+              <span>+21</span><span>+10</span><span>0</span><span>−10</span><span>−21</span>
+            </div>
+            <div class="chart-xaxis">
+              <span>0</span><span>500k</span><span>1.0M</span><span>1.5M</span><span>step</span>
+            </div>
+            <svg viewBox="0 0 1000 400" preserveAspectRatio="none" id="chart-svg"></svg>
+          </div>
+        </div>
+
+        <div class="action-panel">
+          <div class="act-toggle">
+            <div class="opt on">ACTION DIST.</div>
+            <div class="opt">Q-VALUES</div>
+            <div class="opt">π LOGITS</div>
+          </div>
+          <div class="actions" id="actions">
+            <!-- filled by JS -->
+          </div>
+        </div>
+
+      </div>
+
+    </section>
+
+    <!-- ╭── RIGHT: inspector ──╮ -->
+    <aside class="col" style="border-left: 1px solid var(--line);">
+
+      <div class="panel">
+        <div class="panel-head">
+          <span class="num">03</span> RUN STATUS
+          <span class="grow"></span>
+          <span class="led breath"></span>
+        </div>
+        <div class="hp-strip">
+          <div class="cell">step <b id="rs-step">1.82M</b></div>
+          <div class="cell">return <b style="color:var(--fg-glow);">+10.3</b></div>
+          <div class="cell">eta <b>02h 14m</b></div>
+        </div>
+        <div class="panel-body">
+          <div class="kv">
+            <div class="k">algorithm</div><div class="v">Rainbow</div>
+            <div class="k">replay</div><div class="v">PER · 1.0M</div>
+            <div class="k">actors / learners</div><div class="v">8 / 1</div>
+            <div class="k">batch · n-step</div><div class="v">32 · 3</div>
+            <div class="k">target sync</div><div class="v">every 8k</div>
+            <div class="k">noisy nets</div><div class="v">σ₀ = 0.5</div>
+            <div class="k">distribution</div><div class="v">C51 · 51 atoms · [−10, +10]</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head">
+          <span class="num">04</span> HYPERPARAMETERS
+          <span class="grow"></span>
+          <span class="tag">LIVE</span>
+        </div>
+        <div class="panel-body">
+          <div class="hp">
+            <div class="lab">learning_rate</div>
+            <div class="slid"><div class="ff" style="width:35%"></div><div class="nub" style="left:35%"></div></div>
+            <div class="val">6.25e-5</div>
+          </div>
+          <div class="hp">
+            <div class="lab">discount γ</div>
+            <div class="slid"><div class="ff" style="width:99%"></div><div class="nub" style="left:99%"></div></div>
+            <div class="val">0.997</div>
+          </div>
+          <div class="hp">
+            <div class="lab">ε-greedy</div>
+            <div class="slid"><div class="ff" style="width:5%"></div><div class="nub" style="left:5%"></div></div>
+            <div class="val">0.024</div>
+          </div>
+          <div class="hp">
+            <div class="lab">replay α</div>
+            <div class="slid"><div class="ff" style="width:50%"></div><div class="nub" style="left:50%"></div></div>
+            <div class="val">0.50</div>
+          </div>
+          <div class="hp">
+            <div class="lab">replay β</div>
+            <div class="slid"><div class="ff" style="width:40%"></div><div class="nub" style="left:40%"></div></div>
+            <div class="val">0.40 → 1.0</div>
+          </div>
+          <div class="hp">
+            <div class="lab">n-step</div>
+            <div class="slid"><div class="ff" style="width:30%"></div><div class="nub" style="left:30%"></div></div>
+            <div class="val">3</div>
+          </div>
+          <div class="hp">
+            <div class="lab">batch_size</div>
+            <div class="slid"><div class="ff" style="width:25%"></div><div class="nub" style="left:25%"></div></div>
+            <div class="val">32</div>
+          </div>
+          <div class="hp">
+            <div class="lab">target_period</div>
+            <div class="slid"><div class="ff" style="width:65%"></div><div class="nub" style="left:65%"></div></div>
+            <div class="val">8000</div>
+          </div>
+          <div class="hp">
+            <div class="lab">grad_clip</div>
+            <div class="slid"><div class="ff" style="width:50%"></div><div class="nub" style="left:50%"></div></div>
+            <div class="val">10.0</div>
+          </div>
+          <div class="hp">
+            <div class="lab">frame_stack</div>
+            <div class="slid"><div class="ff" style="width:80%"></div><div class="nub" style="left:80%"></div></div>
+            <div class="val">4</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head">
+          <span class="num">05</span> NETWORK · RAINBOW DUELING
+          <span class="grow"></span>
+          <span class="chip">2.43M params</span>
+        </div>
+        <div class="panel-body">
+          <div class="architecture">
+            <div class="layer in"><span class="gl">▸</span><span class="nm">Input</span><span class="sh">[4 × 84 × 84]</span></div>
+            <div class="layer"><span class="gl">│</span><span class="nm">Conv2d (32, 8×8, /4)</span><span class="sh">→ 32×20×20</span></div>
+            <div class="layer"><span class="gl">│</span><span class="nm">ReLU</span><span class="sh"></span></div>
+            <div class="layer"><span class="gl">│</span><span class="nm">Conv2d (64, 4×4, /2)</span><span class="sh">→ 64×9×9</span></div>
+            <div class="layer"><span class="gl">│</span><span class="nm">ReLU</span><span class="sh"></span></div>
+            <div class="layer"><span class="gl">│</span><span class="nm">Conv2d (64, 3×3, /1)</span><span class="sh">→ 64×7×7</span></div>
+            <div class="layer"><span class="gl">│</span><span class="nm">Flatten</span><span class="sh">3136</span></div>
+            <div class="layer"><span class="gl">├─</span><span class="nm">NoisyLinear → 512</span><span class="sh">value</span></div>
+            <div class="layer"><span class="gl">│</span><span class="nm">NoisyLinear → 51</span><span class="sh">V(s) atoms</span></div>
+            <div class="layer"><span class="gl">└─</span><span class="nm">NoisyLinear → 512</span><span class="sh">advantage</span></div>
+            <div class="layer head"><span class="gl">⇨</span><span class="nm">NoisyLinear → 6 × 51</span><span class="sh">A(s,a)</span></div>
+            <div class="layer head"><span class="gl">⇨</span><span class="nm">Softmax over atoms</span><span class="sh">Z(s,a)</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head">
+          <span class="num">06</span> AGENT COMPARISON
+          <span class="grow"></span>
+          <span class="dim">norm. score · pong</span>
+        </div>
+        <div class="panel-body">
+          <div class="cmp">
+            <div class="nm me">Rainbow <small>← run</small></div>
+            <div class="bar"><div class="f" style="width:74%"></div></div>
+            <div class="v">+10.3</div>
+          </div>
+          <div class="cmp">
+            <div class="nm">PER-DQN</div>
+            <div class="bar"><div class="f amber" style="width:84%"></div></div>
+            <div class="v">+14.0</div>
+          </div>
+          <div class="cmp">
+            <div class="nm">R2D2</div>
+            <div class="bar"><div class="f cyan" style="width:92%"></div></div>
+            <div class="v">+18.7</div>
+          </div>
+          <div class="cmp">
+            <div class="nm">PPO</div>
+            <div class="bar"><div class="f mag" style="width:79%"></div></div>
+            <div class="v">+12.0</div>
+          </div>
+          <div class="cmp">
+            <div class="nm">IQN <small>partial</small></div>
+            <div class="bar"><div class="f red" style="width:44%"></div></div>
+            <div class="v">−2.5</div>
+          </div>
+          <div class="cmp">
+            <div class="nm">Human ref</div>
+            <div class="bar"><div class="f" style="width:68%; background:var(--fg-dim); box-shadow:none;"></div></div>
+            <div class="v dim">+9.3</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head">
+          <span class="num">07</span> EVENT LOG
+          <span class="grow"></span>
+          <span class="chip">tail · -f runs/0428</span>
+        </div>
+        <div class="log" id="log"></div>
+      </div>
+
+    </aside>
+
+  </div>
+
+  <!-- ─────── Bottom bar ─────── -->
+  <footer class="bar bot">
+    <div class="cell"><span class="led"></span><span class="lbl">TRAIN</span><span class="val">running</span></div>
+    <div class="cell"><span class="lbl">CKPT</span><span class="val">Rainbow_Pong_2.ckpt</span></div>
+    <div class="cell"><span class="lbl">REPLAY</span><span class="val">874,332 / 1,000,000</span></div>
+    <div class="cell"><span class="lbl">GPU</span><span class="val">mps · 47% · 6.1 GB</span></div>
+    <div class="ticker">
+      <div class="strip">
+        <b>e_0428_rainbow_pong</b> · learner step 1,825,917 · gradient norm 0.42 · TD-loss 0.018
+        <span class="sep">▮</span>
+        actor 03 reported <b>episode_return +12.0</b> (avg100 +9.84) at step 1,824,500
+        <span class="sep">▮</span>
+        replay buffer pressure <b>87.4%</b> · sampling rate 4.0:1
+        <span class="sep">▮</span>
+        eval scheduled in 174,083 steps
+        <span class="sep">▮</span>
+        last checkpoint saved <b>Rainbow_Pong_2.ckpt</b> · 18.4 MB
+        <span class="sep">▮</span>
+        watching <b>runs/0428_rainbow_pong/events.out.tfevents</b> · tensorboard live on :6006
+      </div>
+    </div>
+    <div class="cell"><span class="lbl">PYTORCH</span><span class="val">2.2.0</span></div>
+    <div class="cell"><span class="lbl">GYM</span><span class="val">0.25.2</span></div>
+    <div class="cell"><span class="lbl">ALE</span><span class="val">0.7.5</span></div>
+  </footer>
+
+</div>
+
+<script>
+/* ─── ATARI 57 GAME GRID ─── */
+const GAMES_57 = [
+  ["Alien","ALN"],["Amidar","AMI"],["Assault","AST"],["Asterix","ATX"],["Asteroids","AST"],
+  ["Atlantis","ATL"],["Bank Heist","BNK"],["Battle Zone","BTZ"],["Beam Rider","BMR"],["Berzerk","BZK"],
+  ["Bowling","BWL"],["Boxing","BOX"],["Breakout","BKO"],["Centipede","CTP"],["Chopper","CHP"],
+  ["Crazy Climb","CCL"],["Defender","DFD"],["Demon Attack","DMA"],["Double Dunk","DBD"],["Enduro","END"],
+  ["Fishing","FSH"],["Freeway","FWY"],["Frostbite","FRB"],["Gopher","GPH"],["Gravitar","GRV"],
+  ["Hero","HRO"],["Ice Hockey","ICE"],["James Bond","JBN"],["Kangaroo","KGR"],["Krull","KRL"],
+  ["Kung-Fu","KFU"],["Montezuma","MTZ","expert"],["Ms. Pac-Man","PAC"],["Name This","NMT"],["Phoenix","PHX"],
+  ["Pitfall","PIT"],["Pong","PNG","trained"],["Private Eye","PEY"],["Q*bert","QBR"],["Riverraid","RVR"],
+  ["Road Runner","RDR"],["Robotank","RBT"],["Seaquest","SEA"],["Skiing","SKI"],["Solaris","SOL"],
+  ["Space Invaders","SPI"],["Stargunner","STG"],["Surround","SUR"],["Tennis","TEN"],["Time Pilot","TPL"],
+  ["Tutankham","TUT"],["Up'n Down","UND"],["Venture","VNT"],["Video Pinball","VPN"],["Wizard","WIZ"],
+  ["Yars Revenge","YAR"],["Zaxxon","ZAX"]
+];
+
+const grid = document.getElementById("game-grid");
+GAMES_57.forEach((g, i) => {
+  const cell = document.createElement("div");
+  cell.className = "game-cell";
+  if (g[2] === "trained") cell.classList.add("trained");
+  if (g[2] === "expert")  cell.classList.add("expert");
+  if (g[0] === "Pong") cell.classList.add("on");
+  cell.textContent = g[1];
+  cell.title = g[0];
+  cell.addEventListener("click", () => {
+    document.querySelectorAll(".game-cell.on").forEach(c => c.classList.remove("on"));
+    cell.classList.add("on");
+    document.getElementById("game-label").textContent = g[0];
+  });
+  grid.appendChild(cell);
+});
+
+/* ─── ACTION DISTRIBUTION ─── */
+const ACTIONS = [
+  ["NOOP",      0.082, -0.18],
+  ["FIRE",      0.118, +0.04],
+  ["UP",        0.342, +0.61],   // dominant
+  ["RIGHT",     0.061, -0.22],
+  ["LEFT",      0.044, -0.31],
+  ["DOWN",      0.298, +0.48],
+  ["UP-FIRE",   0.027, -0.04],
+  ["DOWN-FIRE", 0.028, -0.06],
+];
+const actionsEl = document.getElementById("actions");
+const maxP = Math.max(...ACTIONS.map(a => a[1]));
+ACTIONS.forEach(([nm, p, q]) => {
+  const w = (p / maxP) * 100;
+  const hot = p === maxP;
+  actionsEl.insertAdjacentHTML("beforeend", `
+    <div class="act">
+      <span class="nm ${hot ? "hot" : ""}">${nm}</span>
+      <div class="bar"><div class="f" style="width:${w.toFixed(1)}%"></div></div>
+      <span class="v">${(p*100).toFixed(1)}%</span>
+    </div>
+    <div class="act" style="margin-top: -8px; margin-bottom: 2px;">
+      <span class="nm dim" style="font-size: 9.5px;">  Q(s,a)</span>
+      <div class="bar q"><div class="f" style="width:${(50 + q*40).toFixed(1)}%"></div></div>
+      <span class="v dim">${q >= 0 ? "+" : ""}${q.toFixed(2)}</span>
+    </div>
+  `);
+});
+
+/* ─── CHART (episode return curves) ─── */
+(function buildChart(){
+  const svg = document.getElementById("chart-svg");
+  const W = 1000, H = 400;
+
+  // helper — generate a learning curve from low → high with noise
+  function curve(n, start, end, noise, seed) {
+    const pts = [];
+    let s = seed;
+    function rnd() { s = (s * 9301 + 49297) % 233280; return s / 233280; }
+    for (let i = 0; i < n; i++) {
+      const t = i / (n - 1);
+      const ease = 1 - Math.pow(1 - t, 1.8);
+      const v = start + (end - start) * ease + (rnd() - 0.5) * noise;
+      pts.push([i / (n - 1) * W, v]);
+    }
+    return pts;
+  }
+
+  // y maps -21..+21 to H..0 (with padding)
+  function yMap(v) { return H - ((v + 21) / 42) * H; }
+  function pathFrom(pts) {
+    return pts.map((p, i) => (i ? "L" : "M") + p[0].toFixed(1) + "," + yMap(p[1]).toFixed(1)).join(" ");
+  }
+  function areaFrom(pts) {
+    return "M" + pts[0][0].toFixed(1) + "," + H + " " +
+      pts.map(p => "L" + p[0].toFixed(1) + "," + yMap(p[1]).toFixed(1)).join(" ") +
+      " L" + pts[pts.length-1][0].toFixed(1) + "," + H + " Z";
+  }
+
+  const rainbow = curve(180, -19, 12, 4.5, 7);
+  const perDqn  = curve(180, -20, 16, 4.0, 31);
+  const iqn     = curve(180, -20, -1, 5.5, 91);
+
+  // human ref dashed
+  const human = [[0, 9.3], [W, 9.3]];
+
+  svg.innerHTML = `
+    <defs>
+      <linearGradient id="rgrad" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%"   stop-color="#86efac" stop-opacity="0.35"/>
+        <stop offset="100%" stop-color="#86efac" stop-opacity="0"/>
+      </linearGradient>
+      <filter id="glow"><feGaussianBlur stdDeviation="2"/></filter>
+    </defs>
+    <!-- zero line -->
+    <line x1="0" y1="${yMap(0)}" x2="${W}" y2="${yMap(0)}" stroke="#1e5743" stroke-dasharray="2,4"/>
+    <!-- human ref -->
+    <line x1="0" y1="${yMap(9.3)}" x2="${W}" y2="${yMap(9.3)}" stroke="#2e7e5e" stroke-dasharray="6,4" opacity="0.7"/>
+    <!-- per-dqn (amber) -->
+    <path d="${pathFrom(perDqn)}" fill="none" stroke="#f5b942" stroke-width="1.2" opacity="0.85"/>
+    <!-- iqn (cyan, dim) -->
+    <path d="${pathFrom(iqn)}" fill="none" stroke="#67e8f9" stroke-width="1.2" opacity="0.55"/>
+    <!-- rainbow area + line -->
+    <path d="${areaFrom(rainbow)}" fill="url(#rgrad)"/>
+    <path d="${pathFrom(rainbow)}" fill="none" stroke="#86efac" stroke-width="2" filter="url(#glow)" opacity="0.7"/>
+    <path d="${pathFrom(rainbow)}" fill="none" stroke="#b9fbc0" stroke-width="1.4"/>
+    <!-- current marker -->
+    <circle cx="${rainbow[rainbow.length-1][0]}" cy="${yMap(rainbow[rainbow.length-1][1])}" r="3" fill="#b9fbc0"/>
+    <circle cx="${rainbow[rainbow.length-1][0]}" cy="${yMap(rainbow[rainbow.length-1][1])}" r="6" fill="none" stroke="#b9fbc0" opacity="0.4"/>
+  `;
+})();
+
+/* ─── EVENT LOG ─── */
+const LOG = [
+  ["04:21:03", "evt",  "actor.03", "episode_end · ep <b>4128</b> · return <b>+12.0</b> · len 1843"],
+  ["04:21:03", "ok",   "learner",  "checkpoint saved → <b>Rainbow_Pong_2.ckpt</b> <span class=\"dim\">(18.4 MB)</span>"],
+  ["04:20:58", "info", "trainer",  "td_loss=0.018  q_value=+0.42  grad_norm=0.31"],
+  ["04:20:54", "evt",  "actor.05", "episode_end · ep 4127 · return +6.0 · len 2114"],
+  ["04:20:51", "info", "trainer",  "target network synced @ step 1,824,000"],
+  ["04:20:42", "evt",  "actor.01", "episode_end · ep 4126 · return +14.0 · len 1622"],
+  ["04:20:38", "info", "replay",   "buffer 874,332 / 1,000,000 <span class=\"dim\">(87.4%)</span>"],
+  ["04:20:30", "warn", "actor.07", "stalled · 0.0 reward in 1200 steps · <span class=\"dim\">resetting</span>"],
+  ["04:20:22", "evt",  "actor.02", "episode_end · ep 4125 · return +9.0 · len 1944"],
+  ["04:20:14", "info", "noisy",    "σ_w mean=0.21  σ_b mean=0.18"],
+  ["04:20:09", "evt",  "actor.06", "episode_end · ep 4124 · return +11.0 · len 1701"],
+  ["04:19:55", "ok",   "eval",     "scheduled @ step 2,000,000 · 10k eval steps"],
+  ["04:19:48", "info", "trainer",  "td_loss=0.021  q_value=+0.39  grad_norm=0.40"],
+  ["04:19:34", "err",  "actor.04", "ALE warn · render_mode quirk · <span class=\"dim\">non-fatal</span>"],
+  ["04:19:28", "evt",  "actor.00", "episode_end · ep 4123 · return +8.0 · len 1814"],
+];
+const logEl = document.getElementById("log");
+LOG.forEach(([ts, lvl, src, msg]) => {
+  logEl.insertAdjacentHTML("beforeend",
+    `<div class="row"><span class="ts">${ts}</span><span class="lvl ${lvl}">${lvl.toUpperCase()}</span><span class="msg"><span class="dim">${src}</span> ${msg}</span></div>`
+  );
+});
+
+/* ─── GAME VIEWPORT — pong-ish phosphor sim ─── */
+(function game(){
+  const c = document.getElementById("game-canvas");
+  const ctx = c.getContext("2d");
+  ctx.imageSmoothingEnabled = false;
+  const W = c.width, H = c.height;
+
+  const state = {
+    ball: { x: W/2, y: H/2, vx: 1.4, vy: 0.9 },
+    p1: H/2 - 10,
+    p2: H/2 - 10,
+    score1: 14,
+    score2: 6,
+    frame: 1824503,
+  };
+
+  function step() {
+    const b = state.ball;
+    b.x += b.vx;
+    b.y += b.vy;
+    if (b.y < 4 || b.y > H - 4) b.vy = -b.vy;
+    // agent paddle (left) tracks with slight delay
+    state.p1 += Math.sign((b.y - 10) - state.p1) * 1.1;
+    state.p1 = Math.max(2, Math.min(H - 22, state.p1));
+    // cpu paddle (right) tracks slower
+    state.p2 += Math.sign((b.y - 10) - state.p2) * 0.85;
+    state.p2 = Math.max(2, Math.min(H - 22, state.p2));
+    // bounce off paddles
+    if (b.x < 8 && b.y > state.p1 - 2 && b.y < state.p1 + 22) { b.vx = Math.abs(b.vx) * 1.02; b.vy += (Math.random()-0.5)*0.4; }
+    if (b.x > W - 8 && b.y > state.p2 - 2 && b.y < state.p2 + 22) { b.vx = -Math.abs(b.vx) * 1.02; b.vy += (Math.random()-0.5)*0.4; }
+    if (b.x < 0)  { state.score2++; b.x = W/2; b.y = H/2; b.vx = 1.4; b.vy = 0.9; }
+    if (b.x > W)  { state.score1++; b.x = W/2; b.y = H/2; b.vx = -1.4; b.vy = -0.9; }
+    state.frame++;
+  }
+
+  function draw() {
+    // background
+    ctx.fillStyle = "#000";
+    ctx.fillRect(0, 0, W, H);
+
+    // dashed center line
+    ctx.fillStyle = "#163a2e";
+    for (let y = 4; y < H; y += 6) ctx.fillRect(W/2 - 1, y, 2, 3);
+
+    // paddles
+    ctx.fillStyle = "#86efac";
+    ctx.fillRect(4, Math.round(state.p1), 3, 20);
+    ctx.fillRect(W - 7, Math.round(state.p2), 3, 20);
+
+    // ball
+    ctx.fillStyle = "#b9fbc0";
+    ctx.fillRect(Math.round(state.ball.x) - 1, Math.round(state.ball.y) - 1, 3, 3);
+
+    // scattered "phosphor pixels" in background
+    ctx.fillStyle = "rgba(74,222,128,0.06)";
+    for (let i = 0; i < 18; i++) {
+      ctx.fillRect((i*17 + (state.frame*3)%W) % W, (i*7 + state.frame*2)%H, 1, 1);
+    }
+  }
+
+  let acc = 0, last = performance.now();
+  let playing = true;
+  function tick(t) {
+    const dt = t - last; last = t;
+    acc += dt;
+    while (acc >= 16.67) { if (playing) step(); acc -= 16.67; }
+    draw();
+    document.getElementById("hud-score").textContent = String(state.score1).padStart(2,"0");
+    document.getElementById("hud-score-2").textContent = String(state.score2).padStart(2,"0");
+    document.getElementById("hud-frame").textContent = state.frame.toLocaleString();
+    document.getElementById("step-count").textContent = (state.frame + 1414).toLocaleString();
+    document.getElementById("rs-step").textContent = ((state.frame + 1414) / 1e6).toFixed(2) + "M";
+    requestAnimationFrame(tick);
+  }
+  requestAnimationFrame(tick);
+
+  // play/pause toggle
+  const btn = document.getElementById("play-btn");
+  btn.addEventListener("click", () => {
+    playing = !playing;
+    btn.classList.toggle("on", playing);
+    document.getElementById("play-icon").innerHTML = playing
+      ? '<rect x="3" y="2" width="3" height="12" fill="currentColor"/><rect x="10" y="2" width="3" height="12" fill="currentColor"/>'
+      : '<path d="M3 2l11 6-11 6z" fill="currentColor"/>';
+  });
+})();
+
+/* ─── HEADER FPS / UPTIME ─── */
+(function clock(){
+  let t0 = performance.now();
+  let frames = 0, lastSec = t0, fps = 60;
+  let uptime = 4*3600 + 21*60 + 8;
+  function tick(t) {
+    frames++;
+    if (t - lastSec >= 1000) {
+      fps = frames * 1000 / (t - lastSec);
+      frames = 0; lastSec = t;
+      uptime++;
+      const h = String(Math.floor(uptime/3600)).padStart(2,"0");
+      const m = String(Math.floor((uptime%3600)/60)).padStart(2,"0");
+      const s = String(uptime%60).padStart(2,"0");
+      document.getElementById("uptime").textContent = `${h}:${m}:${s}`;
+      document.getElementById("fps").textContent = fps.toFixed(1);
+    }
+    requestAnimationFrame(tick);
+  }
+  requestAnimationFrame(tick);
+})();
+
+/* ─── TAB / chip clicks for life ─── */
+document.querySelectorAll(".chart-tab").forEach(tab => {
+  tab.addEventListener("click", () => {
+    document.querySelectorAll(".chart-tab").forEach(t => t.classList.remove("on"));
+    tab.classList.add("on");
+  });
+});
+document.querySelectorAll(".act-toggle .opt").forEach(opt => {
+  opt.addEventListener("click", () => {
+    document.querySelectorAll(".act-toggle .opt").forEach(t => t.classList.remove("on"));
+    opt.classList.add("on");
+  });
+});
+document.querySelectorAll(".transport .speed .opt").forEach(opt => {
+  opt.addEventListener("click", () => {
+    document.querySelectorAll(".transport .speed .opt").forEach(t => t.classList.remove("on"));
+    opt.classList.add("on");
+  });
+});
+document.querySelectorAll(".algo").forEach(a => {
+  a.addEventListener("click", () => {
+    document.querySelectorAll(".algo.on").forEach(x => x.classList.remove("on"));
+    a.classList.add("on");
+  });
+});
+</script>
+</body>
+</html>

@@ -8,6 +8,8 @@ A ready-to-run setup of [michaelnny/deep_rl_zoo](https://github.com/michaelnny/d
 
 > **Attribution.** All code under `deep_rl_zoo/` and `unit_tests/` is the original work of **Michael Hu** (`michaelnny`), released under Apache License 2.0. This repository is a **sandbox derivative** — it adds a `uv`-based setup script, a relaxed requirements pin set that builds on modern macOS (especially Apple Silicon), this README, a CI workflow, and a small set of corrections (one bundled checkpoint with an obsolete architecture removed). The upstream README is preserved as [`UPSTREAM_README.md`](UPSTREAM_README.md). See the [LICENSE](LICENSE) file for details.
 
+> **Frontend prototype.** A hi-fi research-console UI for this project (CRT/phosphor aesthetic — game viewport, episode-return chart, action distribution, hyperparameter inspector, 57-game grid, replay scrubber) lives at [`frontend/index.html`](frontend/). It's a static, single-file HTML/CSS/JS prototype with mock data — open with `python -m http.server` from the `frontend/` directory. Designed in [Claude Design](https://claude.ai/design); see [`frontend/README.md`](frontend/README.md) for what it shows and what's faked.
+
 > ⚠️ **About "play all 57 Atari games out of the box"**
 >
 > deep_rl_zoo is **research / educational code**. Upstream ships 5 pre-trained checkpoints; in this sandbox we kept 4 (Pong × 3, MontezumaRevenge × 1) — the bundled `PPO_Breakout_0.ckpt` was removed because its network architecture predates upstream commit `cd860e8` ("major update with breaking changes", June 2023) and no longer loads on current code (`Missing key(s) in state_dict: policy_head.0.weight, ...`).
