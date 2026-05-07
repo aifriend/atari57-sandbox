@@ -1217,39 +1217,10 @@ body::after {
         <div class="panel-head">
           <span class="num">06</span> AGENT COMPARISON
           <span class="grow"></span>
-          <span class="dim">norm. score · pong</span>
+          <span class="dim" id="cmp-status">eval: idle</span>
         </div>
-        <div class="panel-body">
-          <div class="cmp">
-            <div class="nm me">Rainbow <small>← run</small></div>
-            <div class="bar"><div class="f" style="width:74%"></div></div>
-            <div class="v">+10.3</div>
-          </div>
-          <div class="cmp">
-            <div class="nm">PER-DQN</div>
-            <div class="bar"><div class="f amber" style="width:84%"></div></div>
-            <div class="v">+14.0</div>
-          </div>
-          <div class="cmp">
-            <div class="nm">R2D2</div>
-            <div class="bar"><div class="f cyan" style="width:92%"></div></div>
-            <div class="v">+18.7</div>
-          </div>
-          <div class="cmp">
-            <div class="nm">PPO</div>
-            <div class="bar"><div class="f mag" style="width:79%"></div></div>
-            <div class="v">+12.0</div>
-          </div>
-          <div class="cmp">
-            <div class="nm">IQN <small>partial</small></div>
-            <div class="bar"><div class="f red" style="width:44%"></div></div>
-            <div class="v">−2.5</div>
-          </div>
-          <div class="cmp">
-            <div class="nm">Human ref</div>
-            <div class="bar"><div class="f" style="width:68%; background:var(--fg-dim); box-shadow:none;"></div></div>
-            <div class="v dim">+9.3</div>
-          </div>
+        <div class="panel-body" id="comparison-body">
+          <!-- Populated by app.js · click "▶ COMPARE" to run -->
         </div>
       </div>
 

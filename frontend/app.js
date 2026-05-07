@@ -739,6 +739,191 @@
     host.appendChild(btn);
   }
 
+  /* ───────── recordings (replay) ───────── */
+
+  let replayOverlay = null;
+
+  async function openLatestReplay() {
+    let recs;
+    try {
+      recs = (await fetchJSON("/api/recordings")).items;
+    } catch (err) {
+      appendLog("err", "replay", `${err}`);
+      return;
+    }
+    if (!recs.length) {
+      appendLog("info", "replay", "no recordings yet · run an eval to generate one");
+      return;
+    }
+    const latest = recs[0];
+    appendLog("info", "replay", `playing ${latest.filename} (${(latest.size_bytes / 1024).toFixed(0)} KB)`);
+    showReplayOverlay(latest.url, latest.filename);
+  }
+
+  function showReplayOverlay(src, label) {
+    closeReplayOverlay();
+    const canvas = document.getElementById("game-canvas");
+    if (!canvas) return;
+    const parent = canvas.parentElement;
+    if (!parent) return;
+    if (getComputedStyle(parent).position === "static") {
+      parent.style.position = "relative";
+    }
+    replayOverlay = document.createElement("div");
+    replayOverlay.style.cssText = `
+      position: absolute;
+      inset: 0;
+      background: rgba(5, 10, 8, 0.95);
+      z-index: 5;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      border: 1px solid var(--line-bright);
+    `;
+    const video = document.createElement("video");
+    video.src = src;
+    video.controls = true;
+    video.autoplay = true;
+    video.loop = true;
+    video.style.cssText = "max-width: 90%; max-height: 80%; image-rendering: pixelated;";
+    const labelEl = document.createElement("div");
+    labelEl.style.cssText = "color: var(--fg); font-family: var(--mono); font-size: 11px;";
+    labelEl.textContent = label;
+    const closeBtn = document.createElement("button");
+    closeBtn.textContent = "✕ CLOSE";
+    closeBtn.style.cssText = `
+      background: var(--bg-2);
+      border: 1px solid var(--line-bright);
+      color: var(--fg-bright);
+      font-family: var(--mono);
+      font-size: 10px;
+      letter-spacing: 0.12em;
+      padding: 4px 10px;
+      cursor: pointer;
+    `;
+    closeBtn.addEventListener("click", closeReplayOverlay);
+    replayOverlay.appendChild(video);
+    replayOverlay.appendChild(labelEl);
+    replayOverlay.appendChild(closeBtn);
+    parent.appendChild(replayOverlay);
+  }
+
+  function closeReplayOverlay() {
+    if (replayOverlay) {
+      replayOverlay.remove();
+      replayOverlay = null;
+    }
+  }
+
+  /* ───────── agent comparison ───────── */
+
+  function renderComparisonInitial() {
+    const body = document.getElementById("comparison-body");
+    if (!body) return;
+    const ckpts = state.checkpoints || [];
+    if (!ckpts.length) {
+      body.innerHTML = `<div style="padding:8px;color:var(--fg-dim);font-size:11px;">no bundled checkpoints to compare</div>`;
+      return;
+    }
+    body.innerHTML = ckpts
+      .map((c) => `
+        <div class="cmp">
+          <div class="nm">${c.algo_label} <small>${c.game}</small></div>
+          <div class="bar"><div class="f" style="width:0%"></div></div>
+          <div class="v dim">—</div>
+        </div>
+      `)
+      .join("");
+  }
+
+  async function runComparison() {
+    const status = document.getElementById("cmp-status");
+    const body = document.getElementById("comparison-body");
+    if (!body) return;
+    const ckpts = state.checkpoints || [];
+    if (!ckpts.length) return;
+    if (status) status.textContent = `eval: running × ${ckpts.length}`;
+    appendLog("info", "compare", `running ${ckpts.length} parallel evals · 5k steps each (~15s)`);
+    try {
+      const resp = await fetch("/api/comparison/run", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          checkpoints: ckpts.map((c) => c.filename),
+          num_steps: 5000,
+        }),
+      });
+      const data = await resp.json();
+      const results = data.results || [];
+      const allMeans = results.filter((r) => r.mean != null).map((r) => r.mean);
+      if (!allMeans.length) {
+        if (status) status.textContent = "eval: no episodes completed";
+        appendLog("warn", "compare", "no episodes completed in 1k steps · try more");
+        return;
+      }
+      const lo = Math.min(...allMeans, 0);
+      const hi = Math.max(...allMeans, 1);
+      const range = hi - lo || 1;
+      const colors = ["", "amber", "cyan", "mag", "red"];
+      body.innerHTML = results
+        .sort((a, b) => (b.mean ?? -Infinity) - (a.mean ?? -Infinity))
+        .map((r, i) => {
+          if (r.error) {
+            return `<div class="cmp"><div class="nm dim">${r.checkpoint}</div><div class="bar"><div class="f red" style="width:0%"></div></div><div class="v dim">${r.error}</div></div>`;
+          }
+          if (r.mean == null) {
+            return `<div class="cmp"><div class="nm dim">${(r.algo || "?").toUpperCase()} <small>${r.game}</small></div><div class="bar"><div class="f" style="width:0%"></div></div><div class="v dim">no episodes</div></div>`;
+          }
+          const w = ((r.mean - lo) / range) * 100;
+          const cls = colors[i % colors.length];
+          const sign = r.mean >= 0 ? "+" : "";
+          return `<div class="cmp">
+            <div class="nm${i === 0 ? " me" : ""}">${(r.algo || "?").toUpperCase()} <small>${r.game}</small></div>
+            <div class="bar"><div class="f ${cls}" style="width:${w.toFixed(1)}%"></div></div>
+            <div class="v">${sign}${r.mean.toFixed(1)}</div>
+          </div>`;
+        })
+        .join("");
+      if (status) status.textContent = `eval: done · ${results.length} agents`;
+      appendLog("ok", "compare", `${results.length} agents evaluated`);
+    } catch (err) {
+      if (status) status.textContent = "eval: error";
+      appendLog("err", "compare", `${err}`);
+    }
+  }
+
+  function wireSecondaryButtons() {
+    const host = document.querySelector(".transport") || document.body;
+    const styleStr = `
+      margin-left: 8px;
+      background: var(--bg-2);
+      border: 1px solid var(--line-bright);
+      color: var(--fg-bright);
+      font-family: var(--mono);
+      font-size: 10px;
+      letter-spacing: 0.12em;
+      padding: 3px 8px;
+      cursor: pointer;
+    `;
+    const replay = document.createElement("button");
+    replay.id = "replay-btn";
+    replay.textContent = "▶ REPLAY";
+    replay.title = "Open the most recent self-play recording from recordings/";
+    replay.style.cssText = styleStr;
+    replay.addEventListener("click", openLatestReplay);
+    host.appendChild(replay);
+
+    const compare = document.createElement("button");
+    compare.id = "compare-btn";
+    compare.textContent = "▶ COMPARE";
+    compare.title = "Run parallel evals (1k steps each) on all bundled checkpoints";
+    compare.style.cssText = styleStr;
+    compare.addEventListener("click", runComparison);
+    host.appendChild(compare);
+  }
+
   /* ───────── init ───────── */
 
   async function init() {
@@ -747,11 +932,13 @@
     renderGameGrid();
     renderActions();
     renderChartFromRuns();
+    renderComparisonInitial();
     renderEventLog();
     startGameSim();
     startClock();
     wireToggles();
     wireTrainButton();
+    wireSecondaryButtons();
     selectAlgo(state.selected.algo_module);
     selectGame(state.selected.game);
   }

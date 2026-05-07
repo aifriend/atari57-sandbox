@@ -406,6 +406,116 @@ def training_log(job_id: str, tail: int = 100) -> dict[str, Any]:
     return {"job_id": job_id, "lines": lines}
 
 
+# ───────── recordings (self-play MP4s) ─────────
+
+
+@app.get("/api/recordings")
+def list_recordings() -> dict[str, Any]:
+    """List MP4s under recordings/. Each subdir is one recording session."""
+    if not RECORDINGS_DIR.exists():
+        return {"count": 0, "items": []}
+    items = []
+    for p in sorted(RECORDINGS_DIR.rglob("*.mp4")):
+        try:
+            rel = p.relative_to(RECORDINGS_DIR)
+        except ValueError:
+            continue
+        items.append(
+            {
+                "filename": str(rel),  # e.g. IQN-greedy_PongNoFrameskip-v4_..../rl-video-episode-0.mp4
+                "size_bytes": p.stat().st_size,
+                "mtime": p.stat().st_mtime,
+                "url": f"/api/recordings/{rel}",
+            }
+        )
+    items.sort(key=lambda r: r["mtime"], reverse=True)
+    return {"count": len(items), "items": items}
+
+
+@app.get("/api/recordings/{path:path}")
+def serve_recording(path: str) -> FileResponse:
+    """Serve an MP4 by relative path under recordings/."""
+    if ".." in path:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=400, detail="invalid path")
+    target = (RECORDINGS_DIR / path).resolve()
+    if not target.exists() or not str(target).startswith(str(RECORDINGS_DIR.resolve())):
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail="not found")
+    return FileResponse(str(target), media_type="video/mp4")
+
+
+# ───────── agent comparison (parallel eval) ─────────
+
+
+@app.post("/api/comparison/run")
+async def comparison_run(body: dict[str, Any]) -> dict[str, Any]:
+    """Run a quick eval against multiple bundled checkpoints in parallel.
+
+    Body: {
+      "checkpoints": ["Rainbow_Pong_2.ckpt", "PER-DQN_Pong_4.ckpt", ...],
+      "num_steps": 1000          // defaults to 1000
+    }
+
+    Returns: {results: [{checkpoint, episodes, returns: [...], mean, max, min}, ...]}
+    """
+    checkpoints = body.get("checkpoints") or []
+    num_steps = int(body.get("num_steps", 1000))
+    if not checkpoints:
+        return {"error": "checkpoints array is required"}
+
+    async def eval_one(filename: str) -> dict[str, Any]:
+        ckpt_path = CHECKPOINTS_DIR / filename
+        if not ckpt_path.exists():
+            return {"checkpoint": filename, "error": "not found"}
+        meta = _parse_checkpoint(ckpt_path)
+        if meta is None or meta.algo_module is None:
+            return {"checkpoint": filename, "error": "can't parse algo from filename"}
+        env = {**os.environ, "PYTHONPATH": str(REPO_ROOT)}
+        proc = await asyncio.create_subprocess_exec(
+            sys.executable,
+            "-m",
+            "frontend.stream_eval",
+            f"--checkpoint={ckpt_path}",
+            f"--algo={meta.algo_module}",
+            f"--game={meta.game}",
+            f"--num-steps={num_steps}",
+            "--frame-stride=10000",  # effectively skip frames — only need episode events
+            cwd=str(REPO_ROOT),
+            env=env,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.DEVNULL,
+        )
+        episode_returns: list[float] = []
+        assert proc.stdout is not None
+        while True:
+            line = await proc.stdout.readline()
+            if not line:
+                break
+            try:
+                obj = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if obj.get("type") == "episode":
+                episode_returns.append(float(obj.get("episode_return", 0.0)))
+        await proc.wait()
+        if not episode_returns:
+            return {"checkpoint": filename, "algo": meta.algo_module, "game": meta.game, "episodes": 0, "returns": [], "mean": None}
+        return {
+            "checkpoint": filename,
+            "algo": meta.algo_module,
+            "game": meta.game,
+            "episodes": len(episode_returns),
+            "returns": episode_returns,
+            "mean": sum(episode_returns) / len(episode_returns),
+            "max": max(episode_returns),
+            "min": min(episode_returns),
+        }
+
+    results = await asyncio.gather(*(eval_one(name) for name in checkpoints))
+    return {"results": results, "num_steps": num_steps}
+
+
 # ───────── eval streaming via WebSocket ─────────
 
 # Client lifecycle:
