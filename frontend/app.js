@@ -924,9 +924,26 @@
     host.appendChild(compare);
   }
 
+  /* ───────── responsive scale-to-fit ───────── */
+
+  function fitApp() {
+    const app = document.getElementById("app");
+    if (!app) return;
+    const sw = window.innerWidth / 1600;
+    const sh = window.innerHeight / 1000;
+    const scale = Math.min(sw, sh);
+    app.style.setProperty("--app-scale", String(scale));
+  }
+
+  function wireFitApp() {
+    fitApp();
+    window.addEventListener("resize", fitApp);
+  }
+
   /* ───────── init ───────── */
 
   async function init() {
+    wireFitApp();
     await loadCatalog();
     renderAlgoRail();
     renderGameGrid();

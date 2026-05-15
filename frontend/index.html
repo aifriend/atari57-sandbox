@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <title>ATARI57 // Research Sandbox</title>
-<meta name="viewport" content="width=1600" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=VT323&family=JetBrains+Mono:wght@300;400;500;700&family=Space+Grotesk:wght@400;500;700&display=swap" rel="stylesheet">
@@ -45,8 +45,15 @@ html, body {
   font-size: 12px;
   line-height: 1.45;
   letter-spacing: 0.01em;
-  min-height: 100vh;
-  overflow-x: auto;
+}
+html, body {
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+}
+body {
+  display: grid;
+  place-items: center;
 }
 
 /* CRT scanlines + vignette over the whole app */
@@ -98,8 +105,10 @@ body::after {
   min-width: 1600px;
   max-width: 1600px;
   height: 1000px;
-  margin: 0 auto;
   overflow: hidden;
+  transform: scale(var(--app-scale, 1));
+  transform-origin: center center;
+  flex-shrink: 0;
 }
 .bar {
   border-bottom: 1px solid var(--line);
