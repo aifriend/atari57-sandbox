@@ -2,6 +2,14 @@
   <img src="docs/hero.png" alt="Atari57 research sandbox — CRT-style console" width="720">
 </p>
 
+<p align="center">
+  <a href="https://github.com/aifriend/atari57-sandbox/actions/workflows/test.yml"><img alt="CI" src="https://github.com/aifriend/atari57-sandbox/actions/workflows/test.yml/badge.svg"></a>
+  <img alt="Python" src="https://img.shields.io/badge/python-3.10-blue.svg">
+  <img alt="PyTorch" src="https://img.shields.io/badge/PyTorch-EE4C2C?logo=pytorch&logoColor=white">
+  <img alt="License" src="https://img.shields.io/badge/license-Apache%202.0-green.svg">
+  <img alt="macOS arm64" src="https://img.shields.io/badge/macOS-Apple%20Silicon-success.svg">
+</p>
+
 # Atari57 Research Sandbox
 
 A ready-to-run setup of [michaelnny/deep_rl_zoo](https://github.com/michaelnny/deep_rl_zoo) for experimenting with deep RL algorithms on Atari games (PPO, DQN, Rainbow, IQN, R2D2, NGU, Agent57, and more).
