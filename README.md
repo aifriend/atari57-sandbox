@@ -1,24 +1,23 @@
+<p align="center">
+  <img src="docs/hero.png" alt="Atari57 research sandbox — CRT-style console" width="720">
+</p>
+
 # Atari57 Research Sandbox
 
-[![tests](https://github.com/aifriend/atari57-sandbox/actions/workflows/test.yml/badge.svg)](https://github.com/aifriend/atari57-sandbox/actions/workflows/test.yml)
-[![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
-[![Python 3.10](https://img.shields.io/badge/python-3.10-blue.svg)](https://www.python.org/downloads/release/python-3100/)
+A ready-to-run setup of [michaelnny/deep_rl_zoo](https://github.com/michaelnny/deep_rl_zoo) for experimenting with deep RL algorithms on Atari games (PPO, DQN, Rainbow, IQN, R2D2, NGU, Agent57, and more).
 
-A ready-to-run setup of [michaelnny/deep_rl_zoo](https://github.com/michaelnny/deep_rl_zoo) for experimenting with deep RL algorithms on Atari games (PPO, DQN, Rainbow, IQN, R2D2, NGU, **Agent57**, and more).
+**Attribution.** All code under `deep_rl_zoo/` and `unit_tests/` is the original work of Michael Hu (michaelnny), released under Apache License 2.0. This repository is a sandbox derivative — it adds a `uv`-based setup script, a relaxed requirements pin set that builds on modern macOS (Apple Silicon), a FastAPI sidecar with a CRT-aesthetic research console, a CI workflow, and a small set of corrections (one bundled checkpoint with an obsolete architecture removed). The upstream README is preserved as `UPSTREAM_README.md`. See the LICENSE file for details.
 
-> **Attribution.** All code under `deep_rl_zoo/` and `unit_tests/` is the original work of **Michael Hu** (`michaelnny`), released under Apache License 2.0. This repository is a **sandbox derivative** — it adds a `uv`-based setup script, a relaxed requirements pin set that builds on modern macOS (Apple Silicon), a FastAPI sidecar with a CRT-aesthetic research console, a CI workflow, and a small set of corrections (one bundled checkpoint with an obsolete architecture removed). The upstream README is preserved as [`UPSTREAM_README.md`](UPSTREAM_README.md). See the [LICENSE](LICENSE) file for details.
+**Two ways to use this repo:**
 
-> **Two ways to use this repo:**
-> 1. **Run the live console** — `./start.sh`, open the browser, click ▶ to watch real agents play, ▶ TRAIN 5K to spawn training, ▶ COMPARE to run parallel evals, ▶ REPLAY for self-play MP4s. See [§2](#2-run-the-research-console-recommended).
-> 2. **Drive `deep_rl_zoo` from the CLI** — `python -m deep_rl_zoo.<algo>.run_atari` for training, `python -m deep_rl_zoo.<algo>.eval_agent` for evals. See [§3](#3-try-a-bundled-checkpoint-cli) and [§4](#4-train-your-own-cli).
+- **Run the live console** — `./start.sh`, open the browser, click ▶ to watch real agents play, ▶ TRAIN 5K to spawn training, ▶ COMPARE to run parallel evals, ▶ REPLAY for self-play MP4s. See §2.
+- **Drive `deep_rl_zoo` from the CLI** — `python -m deep_rl_zoo.<algo>.run_atari` for training, `python -m deep_rl_zoo.<algo>.eval_agent` for evals. See §3 and §4.
 
-> ⚠️ **About "play all 57 Atari games out of the box"**
->
-> deep_rl_zoo is **research / educational code**. Upstream ships 5 pre-trained checkpoints; in this sandbox we kept 4 (Pong × 3, MontezumaRevenge × 1) — the bundled `PPO_Breakout_0.ckpt` was removed because its network architecture predates upstream commit `cd860e8` ("major update with breaking changes", June 2023) and no longer loads on current code (`Missing key(s) in state_dict: policy_head.0.weight, ...`).
->
-> The upstream author explicitly notes agents were *"only tested on Atari Pong or Breakout, and we stop training once the agent has made some progress."* That shows in the bundled weights: see the eval scores in [§3](#3-try-a-bundled-checkpoint-cli). There is **no community model zoo for deep_rl_zoo** that gives you trained Agent57/R2D2/NGU agents on all 57 games. To get more checkpoints you train them here yourself. See [§7](#7-external-pre-trained-atari-agents-different-ecosystem) for external sources of pre-trained Atari agents (different ecosystem, different setup).
+## ⚠️ About "play all 57 Atari games out of the box"
 
----
+`deep_rl_zoo` is research / educational code. Upstream ships 5 pre-trained checkpoints; in this sandbox we kept 4 (Pong × 3, MontezumaRevenge × 1) — the bundled `PPO_Breakout_0.ckpt` was removed because its network architecture predates upstream commit `cd860e8` ("major update with breaking changes", June 2023) and no longer loads on current code (`Missing key(s) in state_dict: policy_head.0.weight, ...`).
+
+The upstream author explicitly notes agents were "only tested on Atari Pong or Breakout, and we stop training once the agent has made some progress." That shows in the bundled weights: see the eval scores in §3. There is no community model zoo for `deep_rl_zoo` that gives you trained Agent57/R2D2/NGU agents on all 57 games. To get more checkpoints you train them here yourself. See §7 for external sources of pre-trained Atari agents (different ecosystem, different setup).
 
 ## 1. Setup (one command)
 
@@ -27,10 +26,11 @@ A ready-to-run setup of [michaelnny/deep_rl_zoo](https://github.com/michaelnny/d
 ```
 
 What this does:
+
 - Installs `snappy` and `ffmpeg` via Homebrew if missing.
-- Creates a Python 3.10 venv in `.venv/` with `uv` — **native arm64 on Apple Silicon** (uv downloads `cpython-3.10-macos-aarch64` rather than reusing the brew x86_64 build, which would run under Rosetta and be ~2× slower).
-- Installs PyTorch 2.2+, gym 0.25.2 (with `[box2d]` extra so LunarLander works), ALE-py 0.7.5, AutoROM, python-snappy, **FastAPI + uvicorn + tbparse** (for the research console), and **pytest + httpx** (for tests).
-- Downloads the 109 Atari 2600 ROMs via `AutoROM` (license auto-accepted).
+- Creates a Python 3.10 venv in `.venv/` with `uv` — native arm64 on Apple Silicon (`uv` downloads `cpython-3.10-macos-aarch64` rather than reusing the brew x86_64 build, which would run under Rosetta and be ~2× slower).
+- Installs PyTorch 2.2+, gym 0.25.2 (with `[box2d]` extra so LunarLander works), ALE-py 0.7.5, AutoROM, python-snappy, FastAPI + uvicorn + tbparse (for the research console), and pytest + httpx (for tests).
+- Downloads the 109 Atari 2600 ROMs via AutoROM (license auto-accepted).
 - Runs a smoke test that creates a Pong env and prints the obs shape.
 
 Verified eval throughput on M1 (arm64): ~780–1300 steps/sec on CPU depending on algorithm. The same evals on x86_64 Python under Rosetta were 320–700 steps/sec.
@@ -41,7 +41,7 @@ After it finishes:
 source .venv/bin/activate
 ```
 
-### Manual setup (if you skip setup.sh)
+### Manual setup (if you skip `setup.sh`)
 
 ```bash
 uv venv --python 3.10 .venv
@@ -51,9 +51,7 @@ CPPFLAGS="-I$SNAPPY_PREFIX/include" LDFLAGS="-L$SNAPPY_PREFIX/lib" \
 .venv/bin/AutoROM --accept-license
 ```
 
-> **Why a relaxed requirements file?** The upstream `requirements.txt` pins old versions (torch 2.0.1, mujoco 2.2.2) that fail to install on modern macOS / Python 3.11+. `requirements-relaxed.txt` keeps `gym==0.25.2` and `ale-py==0.7.5` (mandatory — the codebase uses the old gym API and the new ale-py 0.10+ doesn't register old-style env names with old gym), loosens torch / opencv / numpy, drops mujoco (not needed for Atari or any classic-control example here), and adds the `[box2d]` extra so LunarLander and the upstream `gym_env_test` work.
-
----
+**Why a relaxed requirements file?** The upstream `requirements.txt` pins old versions (torch 2.0.1, mujoco 2.2.2) that fail to install on modern macOS / Python 3.11+. `requirements-relaxed.txt` keeps `gym==0.25.2` and `ale-py==0.7.5` (mandatory — the codebase uses the old gym API and the new ale-py 0.10+ doesn't register old-style env names with old gym), loosens torch / opencv / numpy, drops mujoco (not needed for Atari or any classic-control example here), and adds the `[box2d]` extra so LunarLander and the upstream `gym_env_test` work.
 
 ## 2. Run the research console (recommended)
 
@@ -62,28 +60,29 @@ CPPFLAGS="-I$SNAPPY_PREFIX/include" LDFLAGS="-L$SNAPPY_PREFIX/lib" \
 ```
 
 That's it. The script:
-1. Verifies the venv is set up.
-2. Frees the configured port (kills anything currently on `127.0.0.1:8000`).
-3. Cleans stale training-job logs from previous sessions.
-4. Spawns a background poller that opens the browser as soon as the server reports healthy.
-5. Runs `uvicorn frontend.server:app --reload` in the foreground, so edits to `frontend/*.py` hot-reload and `Ctrl+C` tears everything down.
+
+- Verifies the venv is set up.
+- Frees the configured port (kills anything currently on `127.0.0.1:8000`).
+- Cleans stale training-job logs from previous sessions.
+- Spawns a background poller that opens the browser as soon as the server reports healthy.
+- Runs `uvicorn frontend.server:app --reload` in the foreground, so edits to `frontend/*.py` hot-reload and Ctrl+C tears everything down.
 
 Override defaults via env vars:
 
 ```bash
-PORT=8123 ./start.sh         # change port
-HOST=0.0.0.0 ./start.sh      # listen on all interfaces (e.g. for a remote dev box)
-NO_BROWSER=1 ./start.sh      # don't auto-open the browser (CI / headless)
+PORT=8123 ./start.sh       # change port
+HOST=0.0.0.0 ./start.sh    # listen on all interfaces (e.g. for a remote dev box)
+NO_BROWSER=1 ./start.sh    # don't auto-open the browser (CI / headless)
 ```
 
 ### What you can do once the page loads
 
 | Button (transport bar) | What it does | Requires |
 |---|---|---|
-| **▶ Play** | Spawns a real `deep_rl_zoo` greedy actor against the bundled checkpoint that matches your `(algo, game)` selection. Streams ALE frames into the canvas + action distribution. | A bundled checkpoint for the pair (today: IQN/Pong, PER-DQN/Pong, Rainbow/Pong, PPO-RND/MontezumaRevenge). |
-| **▶ TRAIN 5K** | Spawns `python -m deep_rl_zoo.<algo>.run_atari` with `--num_train_steps=5000 --num_eval_steps=500`. Logged to the event log; chart auto-refreshes when the run finishes. | Any `(algo, game)` pair. |
-| **▶ COMPARE** | Runs 5000-step parallel evals against every bundled checkpoint and renders the real mean returns in the agent comparison panel, sorted descending. ~10s on M1 CPU. | The 4 bundled checkpoints. |
-| **▶ REPLAY** | Plays the most recent `recordings/.../*.mp4` in an overlay above the canvas. | At least one prior eval that wrote an MP4 (the CLI `eval_agent` writes one; the WebSocket play path doesn't). |
+| ▶ Play | Spawns a real `deep_rl_zoo` greedy actor against the bundled checkpoint that matches your (algo, game) selection. Streams ALE frames into the canvas + action distribution. | A bundled checkpoint for the pair (today: IQN/Pong, PER-DQN/Pong, Rainbow/Pong, PPO-RND/MontezumaRevenge). |
+| ▶ TRAIN 5K | Spawns `python -m deep_rl_zoo.<algo>.run_atari` with `--num_train_steps=5000 --num_eval_steps=500`. Logged to the event log; chart auto-refreshes when the run finishes. | Any (algo, game) pair. |
+| ▶ COMPARE | Runs 5000-step parallel evals against every bundled checkpoint and renders the real mean returns in the agent comparison panel, sorted descending. ~10s on M1 CPU. | The 4 bundled checkpoints. |
+| ▶ REPLAY | Plays the most recent `recordings/.../*.mp4` in an overlay above the canvas. | At least one prior eval that wrote an MP4 (the CLI `eval_agent` writes one; the WebSocket play path doesn't). |
 
 ### Custom hyperparameters
 
@@ -106,9 +105,7 @@ curl -X POST http://127.0.0.1:8000/api/training/start -H 'Content-Type: applicat
 
 The chart picks up new tensorboard scalars automatically the next time you re-render it (selecting a different game, or after a TRAIN 5K run completes).
 
-See [`frontend/README.md`](frontend/README.md) for the full API reference (read-only / WebSocket / training / comparison endpoints) and the architecture diagram.
-
----
+See `frontend/README.md` for the full API reference (read-only / WebSocket / training / comparison endpoints) and the architecture diagram.
 
 ## 3. Try a bundled checkpoint (CLI)
 
@@ -117,14 +114,15 @@ Four pre-trained checkpoints are kept (see §1 for why we removed the fifth). Qu
 ```bash
 # IQN agent on Pong, 2000 eval steps, no tensorboard
 python -m deep_rl_zoo.iqn.eval_agent \
-    --environment_name=Pong \
-    --load_checkpoint_file=./checkpoints/IQN_Pong_2.ckpt \
-    --num_iterations=1 \
-    --num_eval_steps=2000 \
-    --nouse_tensorboard
+  --environment_name=Pong \
+  --load_checkpoint_file=./checkpoints/IQN_Pong_2.ckpt \
+  --num_iterations=1 \
+  --num_eval_steps=2000 \
+  --nouse_tensorboard
 ```
 
 This will:
+
 - Run the agent in greedy (deterministic) mode.
 - Print `episode_return` per iteration.
 - Record an MP4 of self-play under `recordings/`.
@@ -133,26 +131,24 @@ Available bundled checkpoints (and what to expect over 10k steps on M1 arm64):
 
 | File | Algorithm | Game | eval module | Observed `episode_return` (10k steps) |
 |---|---|---|---|---|
-| `IQN_Pong_2.ckpt` | IQN | Pong | `deep_rl_zoo.iqn.eval_agent` | **−2.50** (loses; undertrained) |
-| `PER-DQN_Pong_4.ckpt` | Prioritized DQN | Pong | `deep_rl_zoo.prioritized_dqn.eval_agent` | **+14.0** (wins) |
-| `Rainbow_Pong_2.ckpt` | Rainbow | Pong | `deep_rl_zoo.rainbow.eval_agent` | **+10.3** (wins) |
+| `IQN_Pong_2.ckpt` | IQN | Pong | `deep_rl_zoo.iqn.eval_agent` | −2.50 (loses; undertrained) |
+| `PER-DQN_Pong_4.ckpt` | Prioritized DQN | Pong | `deep_rl_zoo.prioritized_dqn.eval_agent` | +14.0 (wins) |
+| `Rainbow_Pong_2.ckpt` | Rainbow | Pong | `deep_rl_zoo.rainbow.eval_agent` | +10.3 (wins) |
 | `PPO-RND_MontezumaRevenge_2.ckpt` | PPO + RND | MontezumaRevenge | `deep_rl_zoo.ppo_rnd.eval_agent` | 0.0 (sparse-reward game; doesn't reach a key in 10k steps) |
 
-Pong is scored from −21 to +21. The **PER-DQN and Rainbow checkpoints win comfortably**; IQN is a partial-training snapshot that loses. The PPO-RND/Montezuma checkpoint is also early-training — Montezuma needs millions of steps to see meaningful exploration.
-
----
+Pong is scored from −21 to +21. The PER-DQN and Rainbow checkpoints win comfortably; IQN is a partial-training snapshot that loses. The PPO-RND/Montezuma checkpoint is also early-training — Montezuma needs millions of steps to see meaningful exploration.
 
 ## 4. Train your own (CLI)
 
 ### On Atari
 
-> The upstream defaults are aggressive: `dqn.run_atari` is `num_iterations=100 × num_train_steps=500_000` = **50M frames** per run. On a CPU-only Mac that's days. Always pass smaller numbers for a quick smoke run, then scale up once you know the pipeline works.
+The upstream defaults are aggressive: `dqn.run_atari` is `num_iterations=100 × num_train_steps=500_000 = 50M frames` per run. On a CPU-only Mac that's days. Always pass smaller numbers for a quick smoke run, then scale up once you know the pipeline works.
 
 ```bash
 # Quick sanity run (~2 min on M1 CPU): 1 iteration, 5k train steps, 1k eval steps
 python -m deep_rl_zoo.dqn.run_atari --environment_name=Pong \
-    --num_iterations=1 --num_train_steps=5000 --num_eval_steps=1000 \
-    --replay_capacity=10000 --min_replay_size=2000
+  --num_iterations=1 --num_train_steps=5000 --num_eval_steps=1000 \
+  --replay_capacity=10000 --min_replay_size=2000
 
 # Distributed PPO with 8 actors on Breakout (long run; default ≈50M frames)
 python -m deep_rl_zoo.ppo.run_atari --environment_name=Breakout --num_actors=8
@@ -162,10 +158,12 @@ python -m deep_rl_zoo.agent57.run_atari --environment_name=MontezumaRevenge --nu
 ```
 
 Each run writes:
+
 - TensorBoard logs to `runs/`
 - Checkpoints to `checkpoints/` every N iterations
 
 Watch progress:
+
 ```bash
 tensorboard --logdir=./runs
 ```
@@ -179,17 +177,15 @@ python -m deep_rl_zoo.ppo.run_classic --environment_name=LunarLander-v2 --num_ac
 
 ### Algorithms available
 
-Policy-based: `reinforce`, `reinforce_baseline`, `actor_critic`, `a2c`, `sac`, `ppo`, `ppo_icm`, `ppo_rnd`, `impala`
-Value-based: `dqn`, `double_dqn`, `prioritized_dqn`, `drqn`, `r2d2`, `ngu`, `agent57`
-Distributional: `c51_dqn`, `rainbow`, `qr_dqn`, `iqn`
+**Policy-based:** reinforce, reinforce_baseline, actor_critic, a2c, sac, ppo, ppo_icm, ppo_rnd, impala
+**Value-based:** dqn, double_dqn, prioritized_dqn, drqn, r2d2, ngu, agent57
+**Distributional:** c51_dqn, rainbow, qr_dqn, iqn
 
 Each algorithm has the same three entry points: `run_classic`, `run_atari`, `eval_agent`.
 
----
-
 ## 5. Run the test suites
 
-> **The upstream `./run_unit_tests.sh` and `./run_e2e_tests.sh` call `python3` directly — they assume `.venv` is activated.** Without activation you'll get `ModuleNotFoundError: No module named 'absl'`. Run `source .venv/bin/activate` first.
+The upstream `./run_unit_tests.sh` and `./run_e2e_tests.sh` call `python3` directly — they assume `.venv` is activated. Without activation you'll get `ModuleNotFoundError: No module named 'absl'`. Run `source .venv/bin/activate` first.
 
 Three suites:
 
@@ -209,20 +205,6 @@ PYTHONPATH=. pytest frontend/test_server.py -v
 
 CI (`.github/workflows/test.yml`) runs the frontend-api tests + upstream unit tests + an IQN smoke eval on every push.
 
-Verified working subsets of the upstream tests:
-
-```bash
-python -m unit_tests.value_learning_test          # 38 tests, instant
-python -m unit_tests.gym_env_test                 # 16 tests (needs gym[box2d])
-python -m unit_tests.checkpoint_test              # 8 tests
-python -m unit_tests.agent57.run_atari_test       # ~70s — confirms Agent57 actually trains
-python -m unit_tests.ppo.run_atari_test           # ~40s — confirms distributed multi-actor training works on this Mac
-```
-
-The `checkpoint_test` module reads absl FLAGS during `setUp`, so generic `unittest discover` doesn't work for it — use `python -m unit_tests.checkpoint_test`. The e2e tests write checkpoints under `checkpoints/` and tensorboard logs under `runs/`; both new-file patterns are covered by `.gitignore` so the bundled checkpoints / upstream sample logs stay tracked.
-
----
-
 ## 6. Where to make changes (quick map)
 
 | You want to... | Edit |
@@ -238,17 +220,15 @@ The `checkpoint_test` module reads absl FLAGS during `setUp`, so generic `unitte
 | Wire a UI panel to real data | `frontend/app.js` — fetch from `/api/...`, render into existing markup in `frontend/index.html` |
 | Support more checkpoint types in the WebSocket play path | `frontend/stream_eval.py` — add a factory in `ALGO_FACTORIES` |
 
-The hyperparameters in the upstream code are **not fine-tuned** (author's own caveat). Any HP sweep is a useful experiment.
-
----
+The hyperparameters in the upstream code are not fine-tuned (author's own caveat). Any HP sweep is a useful experiment.
 
 ## 7. External pre-trained Atari agents (different ecosystem)
 
-If you want trained agents on more games right now, the largest public source is the **Stable-Baselines3 Zoo** on HuggingFace: <https://huggingface.co/sb3>. Coverage: DQN, PPO, QR-DQN, A2C × ~25 popular Atari games.
+If you want trained agents on more games right now, the largest public source is the Stable-Baselines3 Zoo on HuggingFace: https://huggingface.co/sb3. Coverage: DQN, PPO, QR-DQN, A2C × ~25 popular Atari games.
 
-These are **not** integrable with this venv — SB3 needs `gymnasium` + a recent `ale-py`, while deep_rl_zoo is locked to `gym 0.25.2` + `ale-py 0.7.5`. The two stacks are mutually incompatible because ale-py 0.7.5 only auto-registers env names with old gym, and ale-py 0.10+ only auto-registers with gymnasium.
+These are not integrable with this venv — SB3 needs `gymnasium` + a recent `ale-py`, while `deep_rl_zoo` is locked to `gym 0.25.2 + ale-py 0.7.5`. The two stacks are mutually incompatible because `ale-py 0.7.5` only auto-registers env names with old gym, and `ale-py 0.10+` only auto-registers with gymnasium.
 
-If you want to use them, set up a **separate** venv in a sibling directory (NOT inside this `Atari57/` folder):
+If you want to use them, set up a separate venv in a sibling directory (NOT inside this `Atari57/` folder):
 
 ```bash
 mkdir -p ../Atari57_sb3 && cd ../Atari57_sb3
@@ -256,76 +236,36 @@ uv venv --python 3.11 .venv
 VIRTUAL_ENV=.venv uv pip install "stable-baselines3[extra]" sb3-contrib huggingface-sb3 "ale-py>=0.10" "gymnasium[atari]"
 ```
 
-Then load any agent via `huggingface_sb3.load_from_hub(repo_id="sb3/dqn-PongNoFrameskip-v4", filename="dqn-PongNoFrameskip-v4.zip")` and `stable_baselines3.DQN.load(...)`. Note that **this sibling-venv recipe is unverified** — it's the standard SB3 quick-start, but I haven't actually built it on this machine. It exists here as a starting point, not a guarantee.
-
----
-
-## 8. Project layout
-
-```
-atari57-sandbox/
-├── README.md                  # ← this file (sandbox usage)
-├── UPSTREAM_README.md         # Original deep_rl_zoo README (algorithm catalog + paper refs)
-├── QUICK_START.md             # Upstream's macOS / Ubuntu install notes
-├── LICENSE                    # Apache License 2.0 (preserved from upstream)
-│
-├── setup.sh                   # One-shot installer (brew + uv venv + ROMs + smoke test)
-├── start.sh                   # One-shot launcher (port cleanup + uvicorn + browser + logs)
-├── requirements-relaxed.txt   # Modern pin set used by setup.sh
-├── requirements.txt           # Original upstream pins (kept for reference)
-│
-├── frontend/                  # ── research console (sandbox addition) ──
-│   ├── README.md              #     UI guide + API reference + architecture
-│   ├── server.py              #     FastAPI sidecar (read-only + WebSocket + training + comparison)
-│   ├── stream_eval.py         #     Subprocess that streams Atari frames as JSON-per-line
-│   ├── catalog.py             #     57 games × 20 algorithms + filename→module map
-│   ├── index.html             #     Static markup (1600px CRT layout)
-│   ├── app.js                 #     Vanilla-JS app (fetch + WebSocket + canvas rendering)
-│   └── test_server.py         #     18 pytest API tests
-│
-├── deep_rl_zoo/               # Upstream source — 20 algorithms
-├── unit_tests/                # Upstream unit tests (130 tests) + e2e tests
-├── checkpoints/               # 4 bundled .ckpt files + your training output (gitignored)
-├── runs/                      # TensorBoard logs (upstream samples + your runs)
-├── recordings/                # Self-play MP4s from eval_agent (gitignored)
-├── ideas/                     # Upstream architecture diagrams
-├── screenshots/               # Upstream tensorboard screenshots
-│
-├── .github/workflows/test.yml # CI — frontend tests + upstream tests + IQN smoke eval
-├── run_unit_tests.sh          # Upstream unit-test runner
-├── run_e2e_tests.sh           # Upstream end-to-end test runner
-├── .editorconfig
-└── .gitignore
-```
-
----
+Then load any agent via `huggingface_sb3.load_from_hub(repo_id="sb3/dqn-PongNoFrameskip-v4", filename="dqn-PongNoFrameskip-v4.zip")` and `stable_baselines3.DQN.load(...)`. Note that this sibling-venv recipe is unverified — it's the standard SB3 quick-start, but I haven't actually built it on this machine. It exists here as a starting point, not a guarantee.
 
 ## 9. Common gotchas
 
-- **`No module named 'snappy'`** — `python-snappy` needs `brew install snappy` first; `setup.sh` handles this.
-- **`Could not initialize NNPACK` (CPU warning)** — harmless on M1.
-- **Deprecation warnings about old gym step API and `np.bool8`** — expected. `gym==0.25.2` is pinned because deep_rl_zoo predates the `gym → gymnasium` migration. Don't bump it.
-- **`render_mode` warnings during eval** — gym 0.25.2 quirk; the MP4 still renders correctly.
-- **Slow training on CPU** — Atari training is GPU-friendly. The upstream code only switches between CUDA and CPU (every `run_*.py` has the same line). On Mac it falls back to CPU even when MPS is available. Patch is one line per `run_*.py` (or use `sed` once):
+`No module named 'snappy'` — `python-snappy` needs `brew install snappy` first; `setup.sh` handles this.
 
-  ```bash
-  # Replace the device-selection line everywhere it appears:
-  sed -i '' "s|torch.device('cuda' if torch.cuda.is_available() else 'cpu')|torch.device('mps' if torch.backends.mps.is_available() else ('cuda' if torch.cuda.is_available() else 'cpu'))|g" deep_rl_zoo/*/run_classic.py deep_rl_zoo/*/run_atari.py
-  ```
+`Could not initialize NNPACK` (CPU warning) — harmless on M1.
 
-  Note: not every op in the codebase has an MPS kernel in older torch builds — if you hit `NotImplementedError: ... aten::xxx` falling back to CPU on M1, set `PYTORCH_ENABLE_MPS_FALLBACK=1` to route unsupported ops to CPU automatically.
-- **Architecture mismatches when loading older checkpoints** — upstream commit `cd860e8` (June 2023) refactored conv-net heads from `Linear` to `Sequential(Linear, ReLU, Linear)`. Any pre-2023 .ckpt for the affected algorithms (PPO, A2C, etc.) will fail with `Missing key(s) in state_dict: policy_head.0.weight, ...`. There's no clean back-compat path; just retrain.
+Deprecation warnings about old gym step API and `np.bool8` — expected. `gym==0.25.2` is pinned because `deep_rl_zoo` predates the gym → gymnasium migration. Don't bump it.
 
----
+`render_mode` warnings during eval — gym 0.25.2 quirk; the MP4 still renders correctly.
+
+Slow training on CPU — Atari training is GPU-friendly. The upstream code only switches between CUDA and CPU (every `run_*.py` has the same line). On Mac it falls back to CPU even when MPS is available.
 
 ## 10. Bibliography
 
 Canonical reads for the headline algorithms in this repo:
 
-- **Agent57** (Badia et al., DeepMind, 2020) — first agent above human on all 57 Atari games. <https://arxiv.org/abs/2003.13350>
-- **R2D2** (Kapturowski et al., DeepMind, 2019) — distributed recurrent replay foundation. <https://openreview.net/pdf?id=r1lyTjAqYX>
-- **NGU** (Badia et al., 2020) — exploration curriculum that Agent57 builds on. <https://arxiv.org/abs/2002.06038>
-- **IQN** (Dabney et al., 2018) — implicit quantile distributional RL. <https://arxiv.org/abs/1806.06923>
-- **Rainbow** (Hessel et al., 2017) — combined DQN improvements. <https://arxiv.org/abs/1710.02298>
+- **Agent57** (Badia et al., DeepMind, 2020) — first agent above human on all 57 Atari games. https://arxiv.org/abs/2003.13350
+- **R2D2** (Kapturowski et al., DeepMind, 2019) — distributed recurrent replay foundation. https://openreview.net/pdf?id=r1lyTjAqYX
+- **NGU** (Badia et al., 2020) — exploration curriculum that Agent57 builds on. https://arxiv.org/abs/2002.06038
+- **IQN** (Dabney et al., 2018) — implicit quantile distributional RL. https://arxiv.org/abs/1806.06923
+- **Rainbow** (Hessel et al., 2017) — combined DQN improvements. https://arxiv.org/abs/1710.02298
 
 These map to `deep_rl_zoo/{agent57,r2d2,ngu,iqn,rainbow}/`.
+
+## Author
+
+**Jose Lopez** — AI engineer in Madrid, working on the intersection of biological and artificial intelligence.
+
+- GitHub: [@aifriend](https://github.com/aifriend)
+- LinkedIn: [jafdl](https://www.linkedin.com/in/jafdl)
+- Website: [auto-latam.com](https://auto-latam.com/en)
