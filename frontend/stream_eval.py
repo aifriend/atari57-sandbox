@@ -39,6 +39,12 @@ from pathlib import Path
 from typing import NamedTuple
 
 import numpy as np
+
+# NumPy 2.0 removed np.bool8; gym 0.25.2 (pinned by this repo) still references
+# it in its step/reset paths. Restore the alias before any gym import.
+if not hasattr(np, "bool8"):
+    np.bool8 = np.bool_  # type: ignore[attr-defined]
+
 import torch
 
 import gym
@@ -99,9 +105,28 @@ def _build_iqn(state_dim, action_dim, device, checkpoint_path, env_name) -> tupl
     return network, actor
 
 
-def _build_prioritized_dqn(state_dim, action_dim, device, checkpoint_path, env_name) -> tuple:
+def _build_dqn(state_dim, action_dim, device, checkpoint_path, env_name) -> tuple:
     network = DqnConvNet(state_dim=state_dim, action_dim=action_dim)
     ckpt = PyTorchCheckpoint(environment_name=env_name, agent_name="DQN", restore_only=True)
+    ckpt.register_pair(("network", network))
+    ckpt.restore(checkpoint_path)
+    network.eval()
+    actor = greedy_actors.EpsilonGreedyActor(
+        network=network,
+        exploration_epsilon=0.01,
+        random_state=np.random.RandomState(0),
+        device=device,
+    )
+    return network, actor
+
+
+def _build_prioritized_dqn(state_dim, action_dim, device, checkpoint_path, env_name) -> tuple:
+    network = DqnConvNet(state_dim=state_dim, action_dim=action_dim)
+    # The bundled PER-DQN_Pong_4.ckpt is stamped with agent_name="PER-DQN"
+    # (matches deep_rl_zoo/prioritized_dqn/run_atari.py line 96). The previous
+    # "DQN" value here caused PyTorchCheckpoint.restore to reject the file with
+    # 'agent_name "PER-DQN" and "DQN" mismatch.'
+    ckpt = PyTorchCheckpoint(environment_name=env_name, agent_name="PER-DQN", restore_only=True)
     ckpt.register_pair(("network", network))
     ckpt.restore(checkpoint_path)
     network.eval()
@@ -145,6 +170,7 @@ def _build_ppo_rnd(state_dim, action_dim, device, checkpoint_path, env_name) -> 
 
 
 ALGO_FACTORIES: dict[str, Callable] = {
+    "dqn": _build_dqn,
     "iqn": _build_iqn,
     "prioritized_dqn": _build_prioritized_dqn,
     "rainbow": _build_rainbow,
