@@ -1,0 +1,39 @@
+Atari57 live-play capture
+============================================================
+
+Rainbow / Pong
+  checkpoint:        Rainbow_Pong_2.ckpt
+  frames captured:   600
+  episodes done:     0
+  final ep_return:   None
+  last ep_return:    1.0
+  capture elapsed:   2.3s
+  montage:           screenshots/live_play/Rainbow_Pong_2_montage.png
+
+PER-DQN / Pong
+  checkpoint:        PER-DQN_Pong_4.ckpt
+  frames captured:   600
+  episodes done:     0
+  final ep_return:   None
+  last ep_return:    8.0
+  capture elapsed:   1.7s
+  montage:           screenshots/live_play/PER-DQN_Pong_4_montage.png
+
+IQN / Pong
+  checkpoint:        IQN_Pong_2.ckpt
+  frames captured:   600
+  episodes done:     0
+  final ep_return:   None
+  last ep_return:    -4.0
+  capture elapsed:   2.4s
+  montage:           screenshots/live_play/IQN_Pong_2_montage.png
+
+PPO-RND / MontezumaRevenge
+  checkpoint:        PPO-RND_MontezumaRevenge_2.ckpt
+  frames captured:   601
+  episodes done:     1
+  final ep_return:   0.0
+  last ep_return:    0.0
+  capture elapsed:   2.0s
+  montage:           screenshots/live_play/PPO-RND_MontezumaRevenge_2_montage.png
+
