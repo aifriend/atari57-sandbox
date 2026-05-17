@@ -12,6 +12,10 @@ __pycache__/
 # Claude Code worktree config — per-session local state, not part of the project
 .claude/
 
+# SpecStory (Cursor IDE auto-save) — already excluded from Cursor indexing
+# via .cursorindexingignore; this also keeps it out of git.
+.specstory/
+
 # Jupyter Notebook
 .ipynb_checkpoints
 
