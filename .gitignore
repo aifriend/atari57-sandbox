@@ -24,6 +24,11 @@ recordings/
 runs/**/events.out.tfevents.*
 # per-training-job stdout logs written by frontend/server.py on /api/training/start
 runs/_training_*.log
+# per-run summary CSV that deep_rl_zoo.dqn.run_atari appends to on every
+# training run; untracked to keep the working tree clean after TRAIN.
+# (The other logs/*_atari_results.csv files remain tracked for now —
+# they'll have the same dynamic the moment their algo is trained.)
+logs/dqn_atari_results.csv
 # new training checkpoints; bundled ones are kept via !-rules below
 checkpoints/*.ckpt
 !checkpoints/IQN_Pong_2.ckpt
