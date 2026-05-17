@@ -1,0 +1,206 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Atari57 Live Play — Gallery</title>
+<style>
+  :root {
+    --bg-0: #050a08;
+    --bg-1: #081511;
+    --bg-2: #0c1f19;
+    --line: #163a2e;
+    --line-bright: #1e5743;
+    --fg-dim: #2e7e5e;
+    --fg: #4ade80;
+    --fg-bright: #86efac;
+    --fg-glow: #b9fbc0;
+    --amber: #f5b942;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 24px 32px 64px;
+    background: var(--bg-0);
+    color: var(--fg);
+    font-family: "JetBrains Mono", ui-monospace, monospace;
+    font-size: 13px; line-height: 1.5;
+  }
+  h1 {
+    font-family: "VT323", monospace;
+    font-size: 36px; letter-spacing: 0.15em;
+    color: var(--fg-glow);
+    text-shadow: 0 0 6px rgba(134,239,172,0.6);
+    margin: 0 0 4px 0;
+  }
+  .sub {
+    color: var(--fg-dim);
+    margin-bottom: 28px;
+    font-size: 12px;
+  }
+  .section-head {
+    border-top: 1px solid var(--line);
+    margin: 36px 0 16px;
+    padding-top: 12px;
+    color: var(--fg-bright);
+    font-size: 11px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+  }
+  .section-head .meta { color: var(--fg-dim); margin-left: 16px; font-size: 10px; }
+  .card {
+    background: var(--bg-1);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 14px 16px 18px;
+    margin-bottom: 18px;
+  }
+  .card h2 {
+    font-family: "VT323", monospace;
+    font-size: 22px; letter-spacing: 0.08em;
+    color: var(--fg-glow);
+    margin: 0 0 4px 0;
+  }
+  .card .tag {
+    display: inline-block; padding: 1px 8px;
+    background: var(--bg-2); border: 1px solid var(--line-bright);
+    border-radius: 3px; font-size: 10px; letter-spacing: 0.12em;
+    color: var(--fg-bright); margin-left: 8px;
+    vertical-align: middle;
+  }
+  .card .meta-line { color: var(--fg-dim); font-size: 11px; margin-bottom: 12px; }
+  .pair {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    align-items: start;
+  }
+  .pair > div { background: #000; border: 1px solid var(--line); padding: 4px; border-radius: 4px; }
+  .pair img { display: block; width: 100%; height: auto; image-rendering: pixelated; border-radius: 2px; }
+  .pair .label {
+    font-size: 10px; color: var(--fg-dim); letter-spacing: 0.15em;
+    text-transform: uppercase; padding: 6px 6px 8px;
+  }
+  @media (max-width: 900px) {
+    .pair { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<h1>ATARI57 · LIVE PLAY GALLERY</h1>
+<div class="sub">
+  Real ALE frames captured from the live FastAPI WebSocket and from
+  direct deep_rl_zoo env factories. Each card pairs a 5-frame montage
+  (static summary) with an animated 100-120 frame GIF (motion).
+</div>
+
+<div class="section-head">
+  Trained agents
+  <span class="meta">· 5 checkpoints across 3 games · streamed via /api/eval/stream</span>
+</div>
+
+<div class="card">
+  <h2>Rainbow / Pong <span class="tag">bundled · iter 2</span></h2>
+  <div class="meta-line">end-of-capture running ep_return = +1.0 (close game)</div>
+  <div class="pair">
+    <div><div class="label">montage</div><img src="Rainbow_Pong_2_montage.png" alt="Rainbow Pong montage"></div>
+    <div><div class="label">animated</div><img src="Rainbow_Pong_2.gif" alt="Rainbow Pong gif"></div>
+  </div>
+</div>
+
+<div class="card">
+  <h2>PER-DQN / Pong <span class="tag">bundled · iter 4 · strongest</span></h2>
+  <div class="meta-line">end-of-capture running ep_return = +8.0 (dominating)</div>
+  <div class="pair">
+    <div><div class="label">montage</div><img src="PER-DQN_Pong_4_montage.png" alt="PER-DQN Pong montage"></div>
+    <div><div class="label">animated</div><img src="PER-DQN_Pong_4.gif" alt="PER-DQN Pong gif"></div>
+  </div>
+</div>
+
+<div class="card">
+  <h2>IQN / Pong <span class="tag">bundled · iter 2 · undertrained</span></h2>
+  <div class="meta-line">end-of-capture running ep_return = −4.0 (losing; partial-training snapshot)</div>
+  <div class="pair">
+    <div><div class="label">montage</div><img src="IQN_Pong_2_montage.png" alt="IQN Pong montage"></div>
+    <div><div class="label">animated</div><span style="display:block;padding:80px 12px;text-align:center;color:var(--fg-dim);font-size:11px;">(GIF not captured this round — montage only)</span></div>
+  </div>
+</div>
+
+<div class="card">
+  <h2>PPO-RND / MontezumaRevenge <span class="tag">bundled · iter 2 · sparse reward</span></h2>
+  <div class="meta-line">avatar wanders the platforms, doesn't reach the key (expected — Montezuma needs millions of steps)</div>
+  <div class="pair">
+    <div><div class="label">montage</div><img src="PPO-RND_MontezumaRevenge_2_montage.png" alt="PPO-RND Montezuma montage"></div>
+    <div><div class="label">animated</div><img src="PPO-RND_MontezumaRevenge_2.gif" alt="PPO-RND Montezuma gif"></div>
+  </div>
+</div>
+
+<div class="card">
+  <h2>DQN / Breakout <span class="tag">freshly trained · 5000 steps · iter 1</span></h2>
+  <div class="meta-line">spawned via POST /api/training/start, completed in ~5s, wrote checkpoints/DQN_Breakout_1.ckpt — then replayed live</div>
+  <div class="pair">
+    <div><div class="label">montage</div><img src="DQN_Breakout_1_montage.png" alt="DQN Breakout montage"></div>
+    <div><div class="label">animated</div><img src="DQN_Breakout_1.gif" alt="DQN Breakout gif"></div>
+  </div>
+</div>
+
+<div class="section-head">
+  Random policy
+  <span class="meta">· 6 games · direct ALE renders via deep_rl_zoo.gym_env</span>
+</div>
+
+<div class="card">
+  <h2>SpaceInvaders <span class="tag">random · action_dim 6</span></h2>
+  <div class="meta-line">1 episode finished · score 240 (accidentally shot a few)</div>
+  <div class="pair">
+    <div><div class="label">montage</div><img src="random_SpaceInvaders_montage.png" alt="SpaceInvaders montage"></div>
+    <div><div class="label">animated</div><img src="random_SpaceInvaders.gif" alt="SpaceInvaders gif"></div>
+  </div>
+</div>
+
+<div class="card">
+  <h2>MsPacman <span class="tag">random · action_dim 9</span></h2>
+  <div class="meta-line">1 episode finished · score 250 (ate pellets while wandering)</div>
+  <div class="pair">
+    <div><div class="label">montage</div><img src="random_MsPacman_montage.png" alt="MsPacman montage"></div>
+    <div><div class="label">animated</div><img src="random_MsPacman.gif" alt="MsPacman gif"></div>
+  </div>
+</div>
+
+<div class="card">
+  <h2>Asteroids <span class="tag">random · action_dim 14</span></h2>
+  <div class="meta-line">no episode finished in 700 steps · running score +610</div>
+  <div class="pair">
+    <div><div class="label">montage</div><img src="random_Asteroids_montage.png" alt="Asteroids montage"></div>
+    <div><div class="label">animated</div><img src="random_Asteroids.gif" alt="Asteroids gif"></div>
+  </div>
+</div>
+
+<div class="card">
+  <h2>Q*bert <span class="tag">random · action_dim 6</span></h2>
+  <div class="meta-line">2 episodes finished · scores 50, 75</div>
+  <div class="pair">
+    <div><div class="label">montage</div><img src="random_Qbert_montage.png" alt="Qbert montage"></div>
+    <div><div class="label">animated</div><img src="random_Qbert.gif" alt="Qbert gif"></div>
+  </div>
+</div>
+
+<div class="card">
+  <h2>Seaquest <span class="tag">random · action_dim 18</span></h2>
+  <div class="meta-line">1 episode finished · score 80 (oxygen ran out)</div>
+  <div class="pair">
+    <div><div class="label">montage</div><img src="random_Seaquest_montage.png" alt="Seaquest montage"></div>
+    <div><div class="label">animated</div><img src="random_Seaquest.gif" alt="Seaquest gif"></div>
+  </div>
+</div>
+
+<div class="card">
+  <h2>Boxing <span class="tag">random · action_dim 18</span></h2>
+  <div class="meta-line">no episode finished in 700 steps · running score −3 (the CPU wins the round)</div>
+  <div class="pair">
+    <div><div class="label">montage</div><img src="random_Boxing_montage.png" alt="Boxing montage"></div>
+    <div><div class="label">animated</div><img src="random_Boxing.gif" alt="Boxing gif"></div>
+  </div>
+</div>
+
+</body>
+</html>

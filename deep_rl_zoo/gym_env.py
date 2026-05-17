@@ -30,6 +30,15 @@
 import os
 import datetime
 import numpy as np
+
+# NumPy 2.0 removed np.bool8; gym 0.25.2 (pinned by this repo) still references
+# it in its passive_env_checker.py during env.step. The upstream README §9
+# notes this as a known deprecation warning, but on NumPy 2.0+ the attribute
+# is gone entirely and gym blows up. Restore the alias so every entry point
+# (run_atari / run_classic / eval_agent / frontend.stream_eval) is covered.
+if not hasattr(np, "bool8"):
+    np.bool8 = np.bool_  # type: ignore[attr-defined]
+
 import cv2
 import logging
 import gym
