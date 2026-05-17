@@ -7,15 +7,23 @@ __pycache__/
 .Python
 
 .vscode
+.cursorindexingignore
+
+# Claude Code worktree config — per-session local state, not part of the project
+.claude/
 
 # Jupyter Notebook
 .ipynb_checkpoints
 
 # Sandbox additions (not upstream)
-.venv/
+# .venv as a bare name covers both a real directory and a symlink to a
+# shared parent venv (a trailing-slash pattern misses the symlink case).
+.venv
 recordings/
 # tensorboard event files live in subdirs of runs/ (e.g. runs/<exp>/events.out.tfevents.*)
 runs/**/events.out.tfevents.*
+# per-training-job stdout logs written by frontend/server.py on /api/training/start
+runs/_training_*.log
 # new training checkpoints; bundled ones are kept via !-rules below
 checkpoints/*.ckpt
 !checkpoints/IQN_Pong_2.ckpt
