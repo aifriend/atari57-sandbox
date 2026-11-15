@@ -10,8 +10,6 @@ that they validate inputs correctly.
 """
 from __future__ import annotations
 
-import json
-
 import pytest
 from fastapi.testclient import TestClient
 
@@ -176,3 +174,111 @@ def test_app_js_served() -> None:
     r = client.get("/app.js")
     assert r.status_code == 200
     assert b"loadCatalog" in r.content
+
+
+# ───────── hardening: training start / comparison / CORS ─────────
+
+
+def _train(**overrides):
+    body = {"algo": "dqn", "game": "Pong"}
+    body.update(overrides)
+    return client.post("/api/training/start", json=body).json()
+
+
+def test_training_start_rejects_unknown_game() -> None:
+    assert "unknown game" in _train(game="NotAGame")["error"]
+
+
+def test_training_start_rejects_game_with_injection() -> None:
+    assert "error" in _train(game="Pong --checkpoint_dir=/tmp/x")
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("num_train_steps", "abc"),
+        ("num_train_steps", -5),
+        ("num_train_steps", 1.5),
+        ("num_iterations", 0),
+        ("num_eval_steps", 10**12),
+        ("num_train_steps", True),
+        ("num_train_steps", [1]),
+    ],
+)
+def test_training_start_rejects_bad_numbers(field: str, value) -> None:
+    assert "error" in _train(**{field: value})
+
+
+@pytest.mark.parametrize(
+    "extra",
+    [
+        ["--checkpoint_dir=/tmp/evil"],
+        ["--results_csv_path=/etc/passwd"],
+        ["--tag=x"],
+        ["--learning_rate=abc"],
+        ["--learning_rate=nan"],
+        ["--learning_rate=5"],
+        ["--batch_size=0"],
+        ["--batch_size=1.5"],
+        ["-m", "os"],
+        ["learning_rate=0.1"],
+        [123],
+        "--learning_rate=0.1",
+    ],
+)
+def test_training_start_rejects_disallowed_extra_args(extra) -> None:
+    assert "error" in _train(extra_args=extra)
+
+
+def test_extra_args_allowlist_accepts_and_normalises() -> None:
+    from frontend.server import _validate_extra_args
+
+    assert _validate_extra_args(None) == []
+    assert _validate_extra_args(["--learning_rate=0.0005", "--batch_size=64", "--nouse_tensorboard", "--clip_grad"]) == [
+        "--learning_rate=0.0005",
+        "--batch_size=64",
+        "--nouse_tensorboard",
+        "--clip_grad",
+    ]
+
+
+def test_training_start_validation_happens_before_spawn(monkeypatch) -> None:
+    import frontend.server as server
+
+    async def boom(*a, **k):  # pragma: no cover - must not be reached
+        raise AssertionError("subprocess spawned despite invalid input")
+
+    monkeypatch.setattr(server.asyncio, "create_subprocess_exec", boom)
+    assert "error" in _train(extra_args=["--checkpoint_dir=/tmp/x"])
+
+
+def test_resolve_checkpoint_accepts_bundled_and_rejects_traversal() -> None:
+    from frontend.server import CHECKPOINTS_DIR, _resolve_checkpoint
+
+    ok = _resolve_checkpoint("IQN_Pong_2.ckpt")
+    assert ok is not None and ok.parent == CHECKPOINTS_DIR.resolve()
+    for bad in ["../IQN_Pong_2.ckpt", "/etc/passwd", "sub/IQN_Pong_2.ckpt", "IQN_Pong_2.txt", "", None, 5, "Nope_Pong_9.ckpt"]:
+        assert _resolve_checkpoint(bad) is None
+
+
+def test_comparison_rejects_traversal_and_bad_steps() -> None:
+    body = client.post("/api/comparison/run", json={"checkpoints": ["../README.md"], "num_steps": 10}).json()
+    assert body["results"][0]["error"] == "not found"
+    assert "error" in client.post("/api/comparison/run", json={"checkpoints": ["IQN_Pong_2.ckpt"], "num_steps": "x"}).json()
+    assert "error" in client.post("/api/comparison/run", json={"checkpoints": "IQN_Pong_2.ckpt"}).json()
+
+
+def test_eval_stream_validates_checkpoint_and_numbers() -> None:
+    with client.websocket_connect("/api/eval/stream") as ws:
+        ws.send_json({"action": "start", "checkpoint": "../README.md"})
+        assert ws.receive_json()["type"] == "error"
+        ws.send_json({"action": "start", "checkpoint": "IQN_Pong_2.ckpt", "num_steps": -1})
+        assert ws.receive_json()["type"] == "error"
+
+
+def test_cors_allows_loopback_origin_only() -> None:
+    ok = client.get("/api/health", headers={"Origin": "http://localhost:5173"})
+    assert ok.headers.get("access-control-allow-origin") == "http://localhost:5173"
+    bad = client.get("/api/health", headers={"Origin": "https://evil.example"})
+    assert "access-control-allow-origin" not in bad.headers
+    assert bad.status_code == 200
