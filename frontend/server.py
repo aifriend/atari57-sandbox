@@ -48,13 +48,17 @@ app = FastAPI(
     version="0.1.0",
 )
 
-# Permissive CORS so the prototype can be served standalone during dev.
-# Tighten for production.
+# CORS: the UI is served from this same app, so cross-origin access is only
+# needed when the prototype is opened from another local dev server. Allow
+# loopback origins by default; extra origins can be added (comma-separated)
+# through ATARI57_CORS_ORIGINS.
+_EXTRA_CORS_ORIGINS = [o.strip() for o in os.environ.get("ATARI57_CORS_ORIGINS", "").split(",") if o.strip()]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=_EXTRA_CORS_ORIGINS,
+    allow_origin_regex=r"^https?://(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$",
+    allow_methods=["GET", "POST"],
+    allow_headers=["Content-Type"],
 )
 
 
@@ -117,6 +121,104 @@ def _parse_checkpoint(p: Path) -> CheckpointMeta | None:
         size_bytes=p.stat().st_size,
         mtime=p.stat().st_mtime,
     )
+
+
+def _resolve_checkpoint(filename: Any) -> Path | None:
+    """Map a client-supplied checkpoint filename to a file inside CHECKPOINTS_DIR.
+
+    Returns None unless the name is a plain `<ALGO>_<Game>_<iter>.ckpt` file name
+    (no separators, no traversal) whose resolved path stays in the checkpoints dir.
+    """
+    if not isinstance(filename, str) or CKPT_RE.match(filename) is None:
+        return None
+    root = CHECKPOINTS_DIR.resolve()
+    path = (CHECKPOINTS_DIR / filename).resolve()
+    if path.parent != root or not path.is_file():
+        return None
+    return path
+
+
+# Flags a client may pass through `extra_args` on /api/training/start. Anything
+# else (checkpoint_dir, results_csv_path, tag, ...) is rejected so a request
+# cannot redirect file writes or change what the subprocess executes.
+# name -> (type, min, max); bool flags use --name / --noname.
+_NUMERIC_FLAGS: dict[str, tuple[type, float, float]] = {
+    "learning_rate": (float, 1e-9, 1.0),
+    "discount": (float, 0.0, 1.0),
+    "max_grad_norm": (float, 0.0, 1e6),
+    "exploration_epsilon_begin_value": (float, 0.0, 1.0),
+    "exploration_epsilon_end_value": (float, 0.0, 1.0),
+    "eval_exploration_epsilon": (float, 0.0, 1.0),
+    "batch_size": (int, 1, 4096),
+    "replay_capacity": (int, 1, 10_000_000),
+    "min_replay_size": (int, 1, 10_000_000),
+    "learn_interval": (int, 1, 10_000),
+    "max_episode_steps": (int, 1, 1_000_000),
+    "seed": (int, 0, 2**31 - 1),
+}
+_BOOL_FLAGS = {"clip_grad", "use_tensorboard", "compress_state"}
+
+# Bounds for the top-level numeric request fields.
+_NUM_FIELD_LIMITS: dict[str, tuple[int, int]] = {
+    "num_iterations": (1, 1000),
+    "num_train_steps": (1, 100_000_000),
+    "num_eval_steps": (1, 10_000_000),
+    "num_steps": (1, 1_000_000),
+    "frame_stride": (1, 100_000),
+}
+
+
+class ValidationError(ValueError):
+    pass
+
+
+def _int_field(value: Any, name: str, default: int) -> int:
+    """Parse an integer request field, enforcing the bounds in _NUM_FIELD_LIMITS."""
+    if value is None:
+        return default
+    if isinstance(value, bool) or not isinstance(value, (int, float, str)):
+        raise ValidationError(f"{name} must be an integer")
+    try:
+        number = float(value)
+    except ValueError:
+        raise ValidationError(f"{name} must be an integer") from None
+    if number != number or number != int(number):  # NaN or fractional
+        raise ValidationError(f"{name} must be an integer")
+    lo, hi = _NUM_FIELD_LIMITS[name]
+    if not lo <= int(number) <= hi:
+        raise ValidationError(f"{name} must be between {lo} and {hi}")
+    return int(number)
+
+
+def _validate_extra_args(extra: Any) -> list[str]:
+    """Return the allowlisted, validated flags from `extra_args`, or raise ValidationError."""
+    if extra is None:
+        return []
+    if not isinstance(extra, list):
+        raise ValidationError("extra_args must be a list of strings")
+    out: list[str] = []
+    for arg in extra:
+        if not isinstance(arg, str) or not arg.startswith("--"):
+            raise ValidationError(f"invalid extra arg: {arg!r}")
+        name, sep, raw = arg[2:].partition("=")
+        if not sep:
+            base = name[2:] if name.startswith("no") else name
+            if name in _BOOL_FLAGS or base in _BOOL_FLAGS:
+                out.append(arg)
+                continue
+            raise ValidationError(f"flag not allowed: {arg}")
+        spec = _NUMERIC_FLAGS.get(name)
+        if spec is None:
+            raise ValidationError(f"flag not allowed: --{name}")
+        kind, lo, hi = spec
+        try:
+            number = kind(raw)
+        except ValueError:
+            raise ValidationError(f"--{name} must be a {kind.__name__}") from None
+        if number != number or not lo <= number <= hi:
+            raise ValidationError(f"--{name} must be between {lo} and {hi}")
+        out.append(f"--{name}={number}")
+    return out
 
 
 def _list_checkpoints() -> list[CheckpointMeta]:
@@ -246,10 +348,7 @@ def run_scalars(run_name: str, tag: str | None = None, max_points: int = 500) ->
         if len(sub) > max_points:
             stride = max(1, len(sub) // max_points)
             sub = sub.iloc[::stride]
-        out[str(tag_name)] = [
-            {"step": int(row.step), "value": float(row.value)}
-            for row in sub.itertuples(index=False)
-        ]
+        out[str(tag_name)] = [{"step": int(row.step), "value": float(row.value)} for row in sub.itertuples(index=False)]
     return {"run": run_name, "tags": out}
 
 
@@ -258,6 +357,7 @@ def run_scalars(run_name: str, tag: str | None = None, max_points: int = 500) ->
 # In-memory job table. Surviving across restarts isn't a goal — for a single-machine
 # research console, this is plenty. Each job is a subprocess of `python -m
 # deep_rl_zoo.<algo>.run_atari` with optional hyperparameter overrides.
+
 
 @dataclass
 class TrainingJob:
@@ -291,7 +391,7 @@ async def training_start(body: dict[str, Any]) -> dict[str, Any]:
       "num_iterations": 1,
       "num_train_steps": 5000,
       "num_eval_steps": 1000,
-      "extra_args": ["--learning_rate=0.0005"]   // optional, passed straight through
+      "extra_args": ["--learning_rate=0.0005"]   // optional, allowlisted flags only
     }
     """
     import time
@@ -302,9 +402,18 @@ async def training_start(body: dict[str, Any]) -> dict[str, Any]:
     if not algo or not game:
         return {"error": "algo and game are required"}
 
-    # Validate algo against catalog.
+    # Validate algo and game against the catalogs.
     if not any(a[0] == algo for a in ALGORITHMS):
         return {"error": f"unknown algo: {algo}"}
+    if not any(g[0] == game for g in GAMES_57):
+        return {"error": f"unknown game: {game}"}
+    try:
+        num_iterations = _int_field(body.get("num_iterations"), "num_iterations", 1)
+        num_train_steps = _int_field(body.get("num_train_steps"), "num_train_steps", 5000)
+        num_eval_steps = _int_field(body.get("num_eval_steps"), "num_eval_steps", 1000)
+        extra_args = _validate_extra_args(body.get("extra_args"))
+    except ValidationError as exc:
+        return {"error": str(exc)}
 
     job_id = uuid.uuid4().hex[:8]
     log_path = REPO_ROOT / "runs" / f"_training_{job_id}.log"
@@ -315,15 +424,15 @@ async def training_start(body: dict[str, Any]) -> dict[str, Any]:
     # defaults to True, so we leave it on by omitting the flag — the chart
     # endpoint reads its event files.
     args = [
-        sys.executable, "-m", f"deep_rl_zoo.{algo}.run_atari",
+        sys.executable,
+        "-m",
+        f"deep_rl_zoo.{algo}.run_atari",
         f"--environment_name={game}",
-        f"--num_iterations={int(body.get('num_iterations', 1))}",
-        f"--num_train_steps={int(body.get('num_train_steps', 5000))}",
-        f"--num_eval_steps={int(body.get('num_eval_steps', 1000))}",
+        f"--num_iterations={num_iterations}",
+        f"--num_train_steps={num_train_steps}",
+        f"--num_eval_steps={num_eval_steps}",
+        *extra_args,
     ]
-    for arg in body.get("extra_args") or []:
-        if isinstance(arg, str) and arg.startswith("--"):
-            args.append(arg)
 
     log_fh = log_path.open("wb")
     proc = await asyncio.create_subprocess_exec(
@@ -437,10 +546,12 @@ def serve_recording(path: str) -> FileResponse:
     """Serve an MP4 by relative path under recordings/."""
     if ".." in path:
         from fastapi import HTTPException
+
         raise HTTPException(status_code=400, detail="invalid path")
     target = (RECORDINGS_DIR / path).resolve()
     if not target.exists() or not str(target).startswith(str(RECORDINGS_DIR.resolve())):
         from fastapi import HTTPException
+
         raise HTTPException(status_code=404, detail="not found")
     return FileResponse(str(target), media_type="video/mp4")
 
@@ -460,13 +571,16 @@ async def comparison_run(body: dict[str, Any]) -> dict[str, Any]:
     Returns: {results: [{checkpoint, episodes, returns: [...], mean, max, min}, ...]}
     """
     checkpoints = body.get("checkpoints") or []
-    num_steps = int(body.get("num_steps", 1000))
-    if not checkpoints:
+    if not isinstance(checkpoints, list) or not checkpoints:
         return {"error": "checkpoints array is required"}
+    try:
+        num_steps = _int_field(body.get("num_steps"), "num_steps", 1000)
+    except ValidationError as exc:
+        return {"error": str(exc)}
 
-    async def eval_one(filename: str) -> dict[str, Any]:
-        ckpt_path = CHECKPOINTS_DIR / filename
-        if not ckpt_path.exists():
+    async def eval_one(filename: Any) -> dict[str, Any]:
+        ckpt_path = _resolve_checkpoint(filename)
+        if ckpt_path is None:
             return {"checkpoint": filename, "error": "not found"}
         meta = _parse_checkpoint(ckpt_path)
         if meta is None or meta.algo_module is None:
@@ -500,7 +614,14 @@ async def comparison_run(body: dict[str, Any]) -> dict[str, Any]:
                 episode_returns.append(float(obj.get("episode_return", 0.0)))
         await proc.wait()
         if not episode_returns:
-            return {"checkpoint": filename, "algo": meta.algo_module, "game": meta.game, "episodes": 0, "returns": [], "mean": None}
+            return {
+                "checkpoint": filename,
+                "algo": meta.algo_module,
+                "game": meta.game,
+                "episodes": 0,
+                "returns": [],
+                "mean": None,
+            }
         return {
             "checkpoint": filename,
             "algo": meta.algo_module,
@@ -523,6 +644,7 @@ async def comparison_run(body: dict[str, Any]) -> dict[str, Any]:
 #   2. send {"action": "start", "checkpoint": "IQN_Pong_2.ckpt", "num_steps": 2000, "frame_stride": 2}
 #   3. receive a stream of {"type": "init"|"step"|"episode"|"done"|"error", ...}
 #   4. send {"action": "stop"} or close the socket — subprocess gets terminated.
+
 
 @app.websocket("/api/eval/stream")
 async def eval_stream(ws: WebSocket) -> None:
@@ -576,14 +698,18 @@ async def eval_stream(ws: WebSocket) -> None:
                     continue
 
                 ckpt_filename = msg.get("checkpoint")
-                num_steps = int(msg.get("num_steps", 2000))
-                frame_stride = int(msg.get("frame_stride", 2))
+                try:
+                    num_steps = _int_field(msg.get("num_steps"), "num_steps", 2000)
+                    frame_stride = _int_field(msg.get("frame_stride"), "frame_stride", 2)
+                except ValidationError as exc:
+                    await ws.send_json({"type": "error", "message": str(exc)})
+                    continue
 
                 if not ckpt_filename:
                     await ws.send_json({"type": "error", "message": "missing 'checkpoint' field"})
                     continue
-                ckpt_path = CHECKPOINTS_DIR / ckpt_filename
-                if not ckpt_path.exists() or ckpt_path.parent != CHECKPOINTS_DIR:
+                ckpt_path = _resolve_checkpoint(ckpt_filename)
+                if ckpt_path is None:
                     await ws.send_json({"type": "error", "message": f"checkpoint not found: {ckpt_filename}"})
                     continue
                 meta = _parse_checkpoint(ckpt_path)
