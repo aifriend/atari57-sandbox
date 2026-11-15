@@ -3,12 +3,23 @@ name: tests
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - "**.md"
   pull_request:
     branches: [main]
+    paths-ignore:
+      - "**.md"
   workflow_dispatch:
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
 jobs:
-  unit-tests:
+  test:
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
@@ -21,14 +32,25 @@ jobs:
           sudo apt-get install -y --no-install-recommends libsnappy-dev ffmpeg swig
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v3
+        uses: astral-sh/setup-uv@v8.3.2
         with:
           python-version: "3.10"
+          enable-cache: true
+          cache-dependency-glob: requirements.lock
 
       - name: Create venv and install Python dependencies
         run: |
           uv venv --python 3.10 .venv
-          VIRTUAL_ENV=.venv uv pip install -r requirements-relaxed.txt
+          VIRTUAL_ENV=.venv uv pip install -r requirements.lock
+
+      - name: Lint (flake8 + black, config from setup.cfg / pyproject.toml)
+        # Non-blocking: the repo has pre-existing findings (2 unused imports,
+        # 3 files black would reformat, in deep_rl_zoo/ and frontend/) that are out of scope for this change.
+        continue-on-error: true
+        run: |
+          VIRTUAL_ENV=.venv uv pip install flake8==6.0.0 flake8-black==0.3.6 black==23.7.0
+          .venv/bin/flake8 .
+          .venv/bin/black --check .
 
       - name: Install Atari ROMs
         run: .venv/bin/AutoROM --accept-license
