@@ -246,7 +246,7 @@ VIRTUAL_ENV=.venv uv pip install "stable-baselines3[extra]" sb3-contrib huggingf
 
 Then load any agent via `huggingface_sb3.load_from_hub(repo_id="sb3/dqn-PongNoFrameskip-v4", filename="dqn-PongNoFrameskip-v4.zip")` and `stable_baselines3.DQN.load(...)`. Note that this sibling-venv recipe is unverified — it's the standard SB3 quick-start, but I haven't actually built it on this machine. It exists here as a starting point, not a guarantee.
 
-## 9. Common gotchas
+## 8. Common gotchas
 
 `No module named 'snappy'` — `python-snappy` needs `brew install snappy` first; `setup.sh` handles this.
 
@@ -258,7 +258,7 @@ Deprecation warnings about old gym step API and `np.bool8` — expected. `gym==0
 
 Slow training on CPU — Atari training is GPU-friendly. The upstream code only switches between CUDA and CPU (every `run_*.py` has the same line). On Mac it falls back to CPU even when MPS is available.
 
-## 10. Bibliography
+## 9. Bibliography
 
 Canonical reads for the headline algorithms in this repo:
 
